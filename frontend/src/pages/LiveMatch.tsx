@@ -147,6 +147,7 @@ export function LiveMatch() {
     (data.me.is_admin ||
       myMember?.role === "player" ||
       myMember?.role === "organizer" ||
+      myMember?.role === "spectator" ||
       myMember?.can_edit)
   );
   const isOrganizer = !!(data && (data.me.is_admin || myMember?.role === "organizer"));
@@ -429,7 +430,7 @@ export function LiveMatch() {
                           ✏️ {t("редактор")}
                         </span>
                       ) : null}
-                      {canEdit ? (
+                      {isOrganizer ? (
                         <Button
                           size="sm"
                           variant="outline"

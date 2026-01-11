@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { confirmPayment, getFeedback, getMatch, markPaid, payerDetails, submitFeedback } from "../lib/api";
+import { confirmPayment, getFeedback, getMatch, markPaid, payerDetails, payerSelect, submitFeedback } from "../lib/api";
 import type { MatchDetail, MatchMember } from "../lib/types";
 import { formatApiError } from "../lib/errors";
 import { Button } from "../components/ui/button";
@@ -23,6 +23,7 @@ export function FinishedMatch() {
   const [payerForm, setPayerForm] = useState({ fio: "", phone: "", bank: "" });
   const [reportOpen, setReportOpen] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
+  const [payerSelectOpen, setPayerSelectOpen] = useState(false);
   const [feedback, setFeedback] = useState<Record<string, string | string[]>>({});
   const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -127,14 +128,25 @@ export function FinishedMatch() {
     () => data?.members.find((m) => m.tg_id === data?.me.tg_id) || null,
     [data]
   );
-  const payerInfo = data?.payments?.payer || null;
-  const isPayer = !!(payerInfo && payerInfo.payer_tg_id === data?.me.tg_id);
-  const paymentStatuses = data?.payments?.statuses || [];
-  const myPaymentStatus = paymentStatuses.find((item) => item.tg_id === data?.me.tg_id)?.status || "unpaid";
   const playersOnly = useMemo(
     () => data?.members.filter((member) => member.role !== "spectator") || [],
     [data]
   );
+  const isOrganizer = !!(data && (data.me.is_admin || myMember?.role === "organizer"));
+  const payerInfo = data?.payments?.payer || null;
+  
+  // Отладочные логи
+  console.log('[FINISHED MATCH] Debug info:', {
+    matchId,
+    me: data?.me,
+    myMember,
+    isOrganizer,
+    payerInfo,
+    playersOnly: playersOnly.map(p => ({ name: p.name, role: p.role, tg_id: p.tg_id }))
+  });
+  const isPayer = !!(payerInfo && payerInfo.payer_tg_id === data?.me.tg_id);
+  const paymentStatuses = data?.payments?.statuses || [];
+  const myPaymentStatus = paymentStatuses.find((item) => item.tg_id === data?.me.tg_id)?.status || "unpaid";
   const statusLabel = (status: string) => {
     if (status === "reported_paid") return t("Ждет подтверждения");
     if (status === "confirmed") return t("Подтверждено");
@@ -414,6 +426,16 @@ export function FinishedMatch() {
                   <div className="text-sm font-semibold">{t("Плательщик")}</div>
                   {payerInfo ? (
                     <div className="space-y-2 text-sm">
+                      {isOrganizer ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPayerSelectOpen(true)}
+                          className="w-full"
+                        >
+                          {t("Поменять плательщика")}
+                        </Button>
+                      ) : null}
                       {isPayer ? (
                         <div className="space-y-2 pt-2">
                           <div className="text-xs text-muted-foreground">
@@ -522,7 +544,18 @@ export function FinishedMatch() {
                       ) : null}
                     </div>
                   ) : (
-                    <div className="text-xs text-muted-foreground">{t("Плательщик не выбран")}</div>
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">{t("Плательщик не выбран")}</div>
+                      {isOrganizer ? (
+                        <Button
+                          size="sm"
+                          onClick={() => setPayerSelectOpen(true)}
+                          className="w-full"
+                        >
+                          {t("Выбрать плательщика")}
+                        </Button>
+                      ) : null}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -941,6 +974,45 @@ export function FinishedMatch() {
                 </div>
               );
             })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог выбора плательщика */}
+      <Dialog open={payerSelectOpen} onOpenChange={setPayerSelectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("Кому предложить оплату?")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {playersOnly.map((member) => (
+              <div
+                key={member.tg_id}
+                className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2 text-sm"
+              >
+                <span>{member.name}</span>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!matchId) return;
+                    console.log('[PAYER SELECT] Selecting payer:', member.tg_id, 'for match:', matchId);
+                    try {
+                      await payerSelect(Number(matchId), member.tg_id);
+                      console.log('[PAYER SELECT] Selection successful');
+                      setPayerSelectOpen(false);
+                      const refreshed = await getMatch(Number(matchId));
+                      console.log('[PAYER SELECT] Data refreshed:', refreshed);
+                      setData(refreshed);
+                    } catch (err) {
+                      console.error('[PAYER SELECT] Error:', err);
+                      setError(formatApiError(err));
+                    }
+                  }}
+                >
+                  {t("Предложить")}
+                </Button>
+              </div>
+            ))}
           </div>
         </DialogContent>
       </Dialog>

@@ -39,10 +39,32 @@ export function MatchesFeed() {
   const [scheduledAt, setScheduledAt] = useState("");
 
   useEffect(() => {
-    fetchMatches()
-      .then((data) => setMatches(data?.matches || []))
-      .catch((err) => setError(formatApiError(err)))
-      .finally(() => setLoading(false));
+    let alive = true;
+    
+    const loadMatches = async () => {
+      try {
+        const data = await fetchMatches();
+        if (alive) {
+          setMatches(data?.matches || []);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (alive) {
+          setError(formatApiError(err));
+          setLoading(false);
+        }
+      }
+    };
+    
+    loadMatches();
+    
+    // Auto-refresh каждые 5 секунд
+    const interval = setInterval(loadMatches, 5000);
+    
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const activeMatches = useMemo(

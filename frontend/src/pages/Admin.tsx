@@ -41,11 +41,6 @@ type StatePlayer = {
   tier_bonus: number;
 };
 
-const venueOptions = [
-  { value: "зал1", label: "Эксперт" },
-  { value: "зал2", label: "Маракана" }
-];
-
 const roleOptions = [
   { value: "player", label: "Игрок" },
   { value: "organizer", label: "Организатор" },
@@ -65,7 +60,6 @@ export function Admin() {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [matchDetail, setMatchDetail] = useState<MatchDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState("player");
   const [memberCanEdit, setMemberCanEdit] = useState(false);
   const [memberName, setMemberName] = useState("");

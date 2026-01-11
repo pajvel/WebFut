@@ -46,7 +46,9 @@ export function GoalModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setScorer(initialScorer || null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAssist(initialAssist || null);
   }, [open, initialScorer, initialAssist]);
 

@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 
 import { Card, CardContent } from "./ui/card";
-import type { MatchParticipant, MatchSummary } from "../lib/types";
+import type { MatchParticipant } from "../lib/types";
 import { AvatarStack } from "./AvatarStack";
 import { useMatText } from "../lib/mode18";
 

@@ -79,7 +79,7 @@ def _why_text(base_eval: dict, alt_eval: dict) -> str:
     return ", ".join(reasons) or "слегка хуже по общему балансу"
 
 
-@bp.get("")
+@bp.get("/")
 def list_matches():
     user = require_user()
     context_id = request.args.get("context_id", type=int)
@@ -151,7 +151,7 @@ def list_matches():
     return ok({"matches": response_matches})
 
 
-@bp.post("")
+@bp.post("/")
 def create_match():
     user = require_user()
     data = request.get_json(silent=True) or {}
@@ -527,7 +527,9 @@ def get_match(match_id: int):
                     "role": member.role,
                     "can_edit": member.can_edit,
                     "joined_at": member.joined_at.isoformat(),
-                    "name": user_row.custom_name or user_row.tg_name,
+                    "name": member.name or (user_row.custom_name or user_row.tg_name),
+                    "rating": member.rating,
+                    "invited_by_tg_id": member.invited_by_tg_id,
                     "avatar": user_row.custom_avatar or user_row.tg_avatar,
                 }
                 for member, user_row in members

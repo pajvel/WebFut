@@ -15,6 +15,7 @@ def create_app() -> Flask:
         static_folder=str(dist_dir),
         static_url_path="",
     )
+    app.url_map.strict_slashes = False
     CORS(
         app,
         resources={r"/*": {"origins": "*"}},
@@ -24,14 +25,14 @@ def create_app() -> Flask:
     from .routes import admin, auth, events, feedback, matches, me, payments, teams
 
     api_prefix = "/api"
-    app.register_blueprint(auth.bp, url_prefix=api_prefix)
+    app.register_blueprint(auth.bp, url_prefix=f"{api_prefix}/auth")
     app.register_blueprint(me.bp, url_prefix=api_prefix)
-    app.register_blueprint(matches.bp, url_prefix=api_prefix)
-    app.register_blueprint(teams.bp, url_prefix=api_prefix)
-    app.register_blueprint(events.bp, url_prefix=api_prefix)
-    app.register_blueprint(payments.bp, url_prefix=api_prefix)
-    app.register_blueprint(feedback.bp, url_prefix=api_prefix)
-    app.register_blueprint(admin.bp, url_prefix=api_prefix)
+    app.register_blueprint(matches.bp, url_prefix=f"{api_prefix}/matches")
+    app.register_blueprint(teams.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>/teams")
+    app.register_blueprint(events.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>/events")
+    app.register_blueprint(payments.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
+    app.register_blueprint(feedback.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
+    app.register_blueprint(admin.bp, url_prefix=f"{api_prefix}/admin")
 
     @app.get("/api/health")
     def healthcheck():

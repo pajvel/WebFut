@@ -26,7 +26,7 @@ function buildUrl(path: string) {
   if (!API_BASE_URL) {
     return path;
   }
-  return `${API_BASE_URL.replace(/\/$/, "")}\/${path.replace(/^\//, "")}`;
+  return `${API_BASE_URL.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 }
 
 function getAuthHeaders() {
@@ -54,7 +54,11 @@ async function parseJsonSafe(response: Response) {
   }
 }
 
-export async function apiFetch<T>(path: string, options: RequestInit = {}) {
+export async function apiFetch<T>(path: string, options: {
+  method?: string;
+  body?: string | FormData;
+  headers?: Record<string, string>;
+} = {}) {
   const headers: Record<string, string> = {
     ...getAuthHeaders(),
     ...(options.headers || {})
@@ -82,6 +86,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}) {
   if (!data) {
     return undefined as T;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { ok, ...payload } = data as ApiResponse<T>;
   return payload as T;
 }
@@ -95,7 +100,7 @@ export async function authTelegram(initData: string) {
 }
 
 export async function fetchMatches() {
-  return apiFetch<{ matches: MatchSummary[] }>("/matches");
+  return apiFetch<{ matches: MatchSummary[] }>("/matches/");
 }
 
 export async function createMatch(payload: {
@@ -103,7 +108,7 @@ export async function createMatch(payload: {
   venue: string;
   scheduled_at?: string | null;
 }) {
-  return apiFetch<{ id: number }>("/matches", {
+  return apiFetch<{ id: number }>("/matches/", {
     method: "POST",
     body: JSON.stringify(payload)
   });
@@ -458,6 +463,12 @@ export async function adminRebuildInteractionLogs(context_id = 1) {
   });
 }
 
+export async function adminDeleteMatch(matchId: number) {
+  return apiFetch(`/admin/matches/${matchId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function adminCreateUser(payload: { tg_id?: number; name: string }) {
   return apiFetch<{ tg_id: number }>("/admin/users", {
     method: "POST",
@@ -472,7 +483,14 @@ export async function adminPatchUser(tg_id: number, payload: { custom_name?: str
   });
 }
 
-export async function adminAddMatchMembers(matchId: number, members: Array<{ tg_id: number; role: string; can_edit: boolean }>) {
+export async function adminAddMatchMembers(matchId: number, members: Array<{ 
+  tg_id: number; 
+  role: string; 
+  can_edit: boolean;
+  name?: string;
+  rating?: number;
+  invited_by_tg_id?: number;
+}>) {
   return apiFetch(`/admin/matches/${matchId}/members`, {
     method: "POST",
     body: JSON.stringify({ members })

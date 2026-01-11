@@ -65,7 +65,14 @@ export function MatchLobby() {
       }
       getMatch(Number(matchId))
         .then((result) => {
-          if (alive) setData(result);
+          if (alive) {
+            // Если статус матча изменился на "live", переходим на страницу live матча
+            if (result.match.status === "live") {
+              navigate(`/matches/${matchId}/live`);
+              return;
+            }
+            setData(result);
+          }
         })
         .catch((err) => setError(formatApiError(err)));
     };
@@ -81,6 +88,7 @@ export function MatchLobby() {
     if (!data) return;
     const currentPayer = data.payments?.payer;
     if (!currentPayer || !currentPayer.payer_tg_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPayerDismissed(false);
     }
   }, [data]);
@@ -185,7 +193,7 @@ export function MatchLobby() {
               {data.match.venue}
             </div>
           </div>
-          <div className={`grid gap-2 ${data.match.status === "created" && !canManageTeams ? "grid-cols-1" : "grid-cols-2"}`}>
+          <div className="grid gap-2 grid-cols-2">
             {myRole ? (
               <Button onClick={handleLeave} variant="secondary">
                 Выйти из матча
@@ -195,9 +203,9 @@ export function MatchLobby() {
                 Присоединиться
               </Button>
             )}
-            {canManageTeams ? (
+            {data.match.status === "created" ? (
               <Button onClick={() => navigate(`/matches/${data.match.id}/teams`)}>
-                Создать команды
+                {canManageTeams ? "Создать команды" : "Команды"}
               </Button>
             ) : null}
           </div>
@@ -310,7 +318,12 @@ export function MatchLobby() {
                     key={req.tg_id}
                     className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2 text-sm"
                   >
-                    <span>{member?.name || req.tg_id}</span>
+                    <span 
+                      className="cursor-pointer hover:text-primary transition"
+                      onClick={() => navigate(`/players/${req.tg_id}`)}
+                    >
+                      {member?.name || req.tg_id}
+                    </span>
                     <Button
                       size="sm"
                       onClick={async () => {
@@ -364,7 +377,8 @@ export function MatchLobby() {
           {data.members.map((member: MatchMember) => (
             <div
               key={member.tg_id}
-              className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/80 px-4 py-3"
+              className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/80 px-4 py-3 transition hover:bg-card/90 cursor-pointer"
+              onClick={() => navigate(`/players/${member.tg_id}`)}
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar className="h-9 w-9 border border-border">
@@ -438,7 +452,12 @@ export function MatchLobby() {
                 key={member.tg_id}
                 className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2 text-sm"
               >
-                <span>{member.name}</span>
+                <span 
+                  className="cursor-pointer hover:text-primary transition"
+                  onClick={() => navigate(`/players/${member.tg_id}`)}
+                >
+                  {member.name}
+                </span>
                 <Button
                   size="sm"
                   onClick={async () => {

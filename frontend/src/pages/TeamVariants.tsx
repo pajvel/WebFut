@@ -60,9 +60,18 @@ export function TeamVariants() {
 
   useEffect(() => {
     if (!matchId) return;
-    getMatch(Number(matchId))
-      .then((result) => {
+    
+    const loadMatchData = async () => {
+      try {
+        const result = await getMatch(Number(matchId));
         setData(result);
+        
+        // Если статус матча изменился на "live", переходим на страницу live матча
+        if (result.match.status === "live") {
+          navigate(`/matches/${matchId}/live`);
+          return;
+        }
+        
         const normalized = (result.team_variants || []).map((variant) => ({
           ...variant,
           teams: normalizeTeams(variant.teams)
@@ -83,8 +92,17 @@ export function TeamVariants() {
           setCustomized(false);
           setWhyText(null);
         }
-      })
-      .catch((err) => setError(formatApiError(err)));
+      } catch (err) {
+        setError(formatApiError(err));
+      }
+    };
+    
+    loadMatchData();
+    
+    // Добавляем polling для real-time обновлений
+    const interval = setInterval(loadMatchData, 3000); // обновляем каждые 3 секунды
+    
+    return () => clearInterval(interval);
   }, [matchId]);
 
   useEffect(() => {
@@ -110,6 +128,11 @@ export function TeamVariants() {
         name: member.name,
         avatar: member.avatar
       }));
+  }, [data]);
+
+  const canEditTeams = useMemo(() => {
+    if (!data) return false;
+    return data.me.is_admin || data.members.some(m => m.tg_id === data.me.tg_id && m.role === "organizer");
   }, [data]);
   const draggingPlayer = useMemo(
     () => (draggingId ? allPlayers.find((player) => player.id === draggingId) || null : null),
@@ -141,16 +164,6 @@ export function TeamVariants() {
     setTeams(next);
     setCustomized(true);
     await updateWhyText(next);
-  };
-
-  const handleVariantSelect = (variant: TeamVariant, index?: number) => {
-    setSelected(variant.variant_no);
-    setTeams(variant.teams);
-    setCustomized(false);
-    setWhyText(null);
-    if (index !== undefined) {
-      setCurrentIndex(index);
-    }
   };
 
   const handleSave = async (teamA?: string, teamB?: string) => {
@@ -236,13 +249,19 @@ export function TeamVariants() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Варианты команд</h1>
-          <p className="text-sm text-muted-foreground">Горизонтальный свайп между вариантами</p>
+          <h1 className="text-2xl font-semibold">
+            {canEditTeams ? "Создание команд" : "Варианты команд"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {canEditTeams ? "Горизонтальный свайп между вариантами" : "Ожидайте решения организатора"}
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleGenerate} className="gap-2">
-          <Shuffle className="h-4 w-4" />
-          Пересчитать
-        </Button>
+        {canEditTeams ? (
+          <Button variant="outline" size="sm" onClick={handleGenerate} className="gap-2">
+            <Shuffle className="h-4 w-4" />
+            Пересчитать
+          </Button>
+        ) : null}
       </div>
 
       {currentVariant ? (
@@ -325,13 +344,15 @@ export function TeamVariants() {
                 data-team={team}
                 className={`space-y-2 rounded-xl p-1 transition ${
                   dragOverTeam === team ? "bg-primary/10" : "bg-transparent"
-                }`}
+                } ${!canEditTeams ? "pointer-events-none" : ""}`}
                 onDragOver={(event) => {
+                  if (!canEditTeams) return;
                   event.preventDefault();
                   setDragOverTeam(team as "A" | "B");
                 }}
                 onDragLeave={() => setDragOverTeam(null)}
                 onDrop={(event) => {
+                  if (!canEditTeams) return;
                   event.preventDefault();
                   setDragOverTeam(null);
                   const playerId = event.dataTransfer.getData("text/plain");
@@ -346,19 +367,22 @@ export function TeamVariants() {
                   return (
                     <div
                       key={player.id}
-                      draggable
+                      draggable={canEditTeams}
                       onTouchStart={() => {
+                        if (!canEditTeams) return;
                         setDraggingId(player.id);
                         setTouchDragActive(true);
                         setTouchGhost(null);
                       }}
                       onTouchMove={(event) => {
+                        if (!canEditTeams) return;
                         event.preventDefault();
                         const touch = event.touches[0];
                         if (!touch) return;
                         setTouchGhost({ x: touch.clientX, y: touch.clientY });
                       }}
                       onTouchEnd={(event) => {
+                        if (!canEditTeams) return;
                         const touch = event.changedTouches[0];
                         const target = document.elementFromPoint(touch.clientX, touch.clientY);
                         const dropZone = target?.closest?.("[data-team]") as HTMLElement | null;
@@ -376,6 +400,7 @@ export function TeamVariants() {
                         setTouchGhost(null);
                       }}
                       onDragStart={(event) => {
+                        if (!canEditTeams) return;
                         event.dataTransfer.setData("text/plain", player.id);
                         event.dataTransfer.effectAllowed = "move";
                         setDraggingId(player.id);
@@ -385,10 +410,10 @@ export function TeamVariants() {
                         draggingId === player.id
                           ? "scale-[1.02] rotate-1 shadow-soft ring-2 ring-primary/30"
                           : ""
-                      } cursor-grab active:cursor-grabbing`}
+                      } ${canEditTeams ? "cursor-grab active:cursor-grabbing" : ""}`}
                       style={{
                         touchAction:
-                          draggingId === player.id || touchDragActive ? "none" : "pan-y"
+                          (draggingId === player.id || touchDragActive) && canEditTeams ? "none" : "pan-y"
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -398,20 +423,22 @@ export function TeamVariants() {
                         </Avatar>
                         {player.name}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          movePlayer(team === "A" ? "B" : "A", player.id)
-                        }
-                        className="rounded-full p-1 text-muted-foreground hover:bg-muted"
-                        aria-label={team === "A" ? "В команду B" : "В команду A"}
-                      >
-                        {team === "A" ? (
-                          <ArrowRight className="h-4 w-4" />
-                        ) : (
-                          <ArrowLeft className="h-4 w-4" />
-                        )}
-                      </button>
+                      {canEditTeams ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            movePlayer(team === "A" ? "B" : "A", player.id)
+                          }
+                          className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+                          aria-label={team === "A" ? "В команду B" : "В команду A"}
+                        >
+                          {team === "A" ? (
+                            <ArrowRight className="h-4 w-4" />
+                          ) : (
+                            <ArrowLeft className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -438,44 +465,46 @@ export function TeamVariants() {
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Быстрые замены
+      {canEditTeams ? (
+        <div className="space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Быстрые замены
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[0, 1, 2].map((index) => {
+              const left = allPlayers[index];
+              const right = allPlayers[index + 3];
+              return (
+                <motion.div key={index} whileTap={{ scale: 0.98 }}>
+                  <Card className="h-full">
+                    <CardContent className="flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-7 w-7 border border-border">
+                          {left?.avatar ? <AvatarImage src={resolveMediaUrl(left.avatar)} /> : null}
+                          <AvatarFallback>{left?.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
+                        <Avatar className="h-7 w-7 border border-border">
+                          {right?.avatar ? <AvatarImage src={resolveMediaUrl(right.avatar)} /> : null}
+                          <AvatarFallback>{right?.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => quickSwap("A", index)}
+                        className="w-full"
+                      >
+                        Поменять
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[0, 1, 2].map((index) => {
-            const left = allPlayers[index];
-            const right = allPlayers[index + 3];
-            return (
-              <motion.div key={index} whileTap={{ scale: 0.98 }}>
-                <Card className="h-full">
-                  <CardContent className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-7 w-7 border border-border">
-                        {left?.avatar ? <AvatarImage src={resolveMediaUrl(left.avatar)} /> : null}
-                        <AvatarFallback>{left?.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
-                      <Avatar className="h-7 w-7 border border-border">
-                        {right?.avatar ? <AvatarImage src={resolveMediaUrl(right.avatar)} /> : null}
-                        <AvatarFallback>{right?.name?.slice(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => quickSwap("A", index)}
-                      className="w-full"
-                    >
-                      Поменять
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
+      ) : null}
 
       {customized ? (
         <Card>
@@ -484,47 +513,63 @@ export function TeamVariants() {
             <div className="text-xs text-muted-foreground">
               {whyText || "Сборка стала менее сбалансированной. Можно вернуться к исходному варианту."}
             </div>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (!matchId) return;
-                try {
-                  await revertTeams(Number(matchId));
-                  const refreshed = await getMatch(Number(matchId));
-                  const normalized = (refreshed.team_variants || []).map((variant) => ({
-                    ...variant,
-                    teams: normalizeTeams(variant.teams)
-                  }));
-                  setVariants(normalized);
-                  if (refreshed.team_current) {
-                    const baseNo = refreshed.team_current.base_variant_no;
-                    const baseIndex = normalized.findIndex(
-                      (variant) => variant.variant_no === baseNo
-                    );
-                    setSelected(baseNo);
-                    setTeams(normalizeTeams(refreshed.team_current.current_teams));
-                    setCurrentIndex(baseIndex >= 0 ? baseIndex : 0);
-                  } else if (normalized.length) {
-                    setSelected(normalized[0].variant_no);
-                    setTeams(normalized[0].teams);
-                    setCurrentIndex(0);
+            {canEditTeams ? (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (!matchId) return;
+                  try {
+                    await revertTeams(Number(matchId));
+                    const refreshed = await getMatch(Number(matchId));
+                    const normalized = (refreshed.team_variants || []).map((variant) => ({
+                      ...variant,
+                      teams: normalizeTeams(variant.teams)
+                    }));
+                    setVariants(normalized);
+                    if (refreshed.team_current) {
+                      const baseNo = refreshed.team_current.base_variant_no;
+                      const baseIndex = normalized.findIndex(
+                        (variant) => variant.variant_no === baseNo
+                      );
+                      setSelected(baseNo);
+                      setTeams(normalizeTeams(refreshed.team_current.current_teams));
+                      setCurrentIndex(baseIndex >= 0 ? baseIndex : 0);
+                    } else if (normalized.length) {
+                      setSelected(normalized[0].variant_no);
+                      setTeams(normalized[0].teams);
+                      setCurrentIndex(0);
+                    }
+                    setCustomized(false);
+                    setWhyText(null);
+                  } catch (err) {
+                    setError(formatApiError(err));
                   }
-                  setCustomized(false);
-                  setWhyText(null);
-                } catch (err) {
-                  setError(formatApiError(err));
-                }
-              }}
-            >
-              Вернуться
-            </Button>
+                }}
+              >
+                Вернуться
+              </Button>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">
+                Только организатор может вернуться к исходному варианту
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : null}
 
-      <Button onClick={() => setSaveOpen(true)} className="w-full">
-        Сохранить команды
-      </Button>
+      {canEditTeams ? (
+        <Button onClick={() => setSaveOpen(true)} className="w-full">
+          Сохранить команды
+        </Button>
+      ) : (
+        <Card>
+          <CardContent className="text-center py-4">
+            <div className="text-sm text-muted-foreground">
+              Ожидайте, когда организатор сохранит состав команд
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <SaveTeamsSheet open={saveOpen} onOpenChange={setSaveOpen} onStart={handleSave} />
     </div>

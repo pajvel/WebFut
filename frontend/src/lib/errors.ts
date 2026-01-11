@@ -18,7 +18,13 @@ export function formatApiError(error: unknown) {
       }
       return "Сессия истекла. Перезапусти WebApp.";
     }
-    if (error.status === 403) return "Недостаточно прав для действия.";
+    if (error.status === 403) {
+      const code = error.data?.error;
+      if (code === "feedback_closed") {
+        return "Время для фидбека истекло (72 часа после матча).";
+      }
+      return "Недостаточно прав для действия.";
+    }
     if (error.status === 404) return "Данные не найдены.";
   }
   if (error instanceof Error) {

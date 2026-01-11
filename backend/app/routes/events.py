@@ -17,7 +17,7 @@ def _can_edit(db, match_id: int, user_id: int) -> bool:
 
 def _can_score(db, match_id: int, user_id: int) -> bool:
     member = db.query(MatchMember).filter_by(match_id=match_id, tg_id=user_id).one_or_none()
-    return member is not None and member.role in ("player", "organizer")
+    return member is not None and (member.role in ("player", "organizer", "spectator") or member.can_edit)
 
 
 def _match_or_404(db, match_id: int):

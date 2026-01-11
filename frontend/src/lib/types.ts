@@ -25,6 +25,8 @@ export type MatchMember = {
   can_edit: boolean;
   joined_at: string;
   name: string;
+  rating?: number;
+  invited_by_tg_id?: number;
   avatar: string | null;
 };
 

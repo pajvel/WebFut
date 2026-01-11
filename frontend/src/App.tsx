@@ -3,21 +3,35 @@ import { Outlet } from "react-router-dom";
 
 import { TopBar } from "./components/TopBar";
 import { ensureTelegramAuth } from "./lib/auth";
-import { getMe, getSettings, patchSettings } from "./lib/api";
+import { getMe, getSettings, patchSettings, ApiError } from "./lib/api";
 import { AppContext } from "./lib/app-context";
 import type { Me, Settings } from "./lib/types";
+import { formatApiError } from "./lib/errors";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const refreshMe = useCallback(() => {
-    getMe().then(setMe).catch(() => undefined);
+    getMe()
+      .then(setMe)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          setAuthError(formatApiError(err));
+        }
+      });
     getSettings().then(setSettings).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    ensureTelegramAuth().finally(refreshMe);
+    ensureTelegramAuth()
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          setAuthError(formatApiError(err));
+        }
+      })
+      .finally(refreshMe);
   }, [refreshMe]);
 
   useEffect(() => {
@@ -37,6 +51,17 @@ export default function App() {
     () => ({ me, settings, setTheme, refreshMe }),
     [me, settings, setTheme, refreshMe]
   );
+
+  if (authError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-6 text-center">
+          <h2 className="mb-2 text-lg font-semibold">Ошибка авторизации</h2>
+          <p className="text-sm text-muted-foreground">{authError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppContext.Provider value={contextValue}>
