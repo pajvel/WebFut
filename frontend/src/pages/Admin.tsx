@@ -1,10 +1,12 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 
-import { Activity, GitMerge, Pencil, RefreshCw, Shield, Swords } from "lucide-react";
+import { Activity, GitMerge, Pencil, RefreshCw, Shield, Swords, Trash } from "lucide-react";
 
 import {
   adminAddMatchMembers,
   adminBindStatePlayer,
+  adminCreateUser,
+  adminDeleteMatch,
   adminGetInteractionLogs,
   adminGetInteractions,
   adminRebuildInteractionLogs,
@@ -24,6 +26,7 @@ import { useAppContext } from "../lib/app-context";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { StatusCard } from "../components/StatusCard";
 import { formatApiError } from "../lib/errors";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -38,6 +41,22 @@ type StatePlayer = {
   tier_bonus: number;
 };
 
+const venueOptions = [
+  { value: "зал1", label: "Эксперт" },
+  { value: "зал2", label: "Маракана" }
+];
+
+const roleOptions = [
+  { value: "player", label: "Игрок" },
+  { value: "organizer", label: "Организатор" },
+  { value: "spectator", label: "Зритель" }
+];
+
+const getRoleLabel = (role: string) => {
+  const option = roleOptions.find(r => r.value === role);
+  return option?.label || role;
+};
+
 export function Admin() {
   const { me } = useAppContext();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -49,6 +68,13 @@ export function Admin() {
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState("player");
   const [memberCanEdit, setMemberCanEdit] = useState(false);
+  const [memberName, setMemberName] = useState("");
+  const [memberRating, setMemberRating] = useState("");
+  const [memberInvitedBy, setMemberInvitedBy] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [newPlayerTgId, setNewPlayerTgId] = useState("");
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [sortKey, setSortKey] = useState<"name" | "global" | "venueA" | "venueB">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editPlayer, setEditPlayer] = useState<StatePlayer | null>(null);
@@ -207,18 +233,61 @@ export function Admin() {
 
   const handleAddMember = async () => {
     if (!selectedMatchId) return;
-    if (!memberUserId) return;
+    
+    let tgId: number;
+    
+    if (isCreatingNew) {
+      // Создаем нового пользователя в системе
+      if (!newPlayerName) return;
+      
+      try {
+        const createUserResult = await adminCreateUser({
+          tg_id: newPlayerTgId ? Number(newPlayerTgId) : undefined,
+          name: newPlayerName
+        });
+        tgId = createUserResult.tg_id;
+        
+        // Если указан рейтинг, устанавливаем его в state
+        if (memberRating) {
+          await adminPatchStatePlayer({
+            player_id: String(tgId),
+            global_rating: Number(memberRating)
+          });
+        }
+      } catch (err) {
+        setError(formatApiError(err));
+        return;
+      }
+    } else {
+      // Используем существующего пользователя
+      tgId = Number(selectedUserId);
+      if (!tgId) return;
+    }
+    
     try {
       await adminAddMatchMembers(selectedMatchId, [
         {
-          tg_id: Number(memberUserId),
+          tg_id: tgId,
           role: memberRole,
-          can_edit: memberCanEdit
+          can_edit: memberCanEdit,
+          name: isCreatingNew ? (memberName || undefined) : undefined,
+          rating: isCreatingNew ? (memberRating ? Number(memberRating) : undefined) : undefined,
+          invited_by_tg_id: memberInvitedBy && memberInvitedBy !== "none" ? Number(memberInvitedBy) : undefined,
         }
       ]);
-      setMemberUserId("");
+      
+      // Сброс формы
+      setSelectedUserId("");
+      setMemberName("");
+      setMemberRating("");
+      setMemberInvitedBy("");
+      setNewPlayerName("");
+      setNewPlayerTgId("");
+      setIsCreatingNew(false);
       setMemberRole("player");
       setMemberCanEdit(false);
+      loadUsers(); // Обновляем список пользователей
+      loadState(); // Обновляем state игроков
       setMatchDetail(await getMatch(selectedMatchId));
     } catch (err) {
       setError(formatApiError(err));
@@ -240,6 +309,21 @@ export function Admin() {
     try {
       await adminPatchSegment(selectedMatchId, segmentId, { score_a: scoreA, score_b: scoreB });
       setMatchDetail(await getMatch(selectedMatchId));
+      loadMatches();
+    } catch (err) {
+      setError(formatApiError(err));
+    }
+  };
+
+  const handleDeleteMatch = async () => {
+    if (!selectedMatchId) return;
+    if (!confirm(`Удалить матч #${selectedMatchId} и все связанные данные? Это действие нельзя отменить.`)) {
+      return;
+    }
+    try {
+      await adminDeleteMatch(selectedMatchId);
+      setSelectedMatchId(null);
+      setMatchDetail(null);
       loadMatches();
     } catch (err) {
       setError(formatApiError(err));
@@ -457,21 +541,42 @@ export function Admin() {
 
           {selectedMatch && matchDetail ? (
             <div className="space-y-4 pt-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Матч #{selectedMatch.id}
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Матч #{selectedMatch.id}
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDeleteMatch}
+                  className="text-xs"
+                >
+                  <Trash className="h-3 w-3 mr-1" />
+                  Удалить
+                </Button>
               </div>
 
               <div className="space-y-2">
                 <div className="text-sm font-semibold">Состав</div>
                 <div className="grid gap-2">
-                  {matchDetail.members.map((member) => (
+                  {matchDetail.members.map((member) => {
+                    const invitedBy = member.invited_by_tg_id 
+                      ? users.find(u => u.tg_id === member.invited_by_tg_id)
+                      : null;
+                    
+                    return (
                     <div
                       key={member.tg_id}
                       className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2 text-sm"
                     >
-                      <span>
-                        {member.name} • {member.role}
-                      </span>
+                      <div className="flex-1">
+                        <div className="font-medium">{member.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {getRoleLabel(member.role)}
+                          {member.rating && ` • Рейтинг: ${member.rating}`}
+                          {invitedBy && ` • Позвал: ${invitedBy.custom_name || invitedBy.tg_name}`}
+                        </div>
+                      </div>
                       <Button
                         size="sm"
                         variant="outline"
@@ -480,19 +585,107 @@ export function Admin() {
                         Удалить
                       </Button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                <div className="grid gap-2">
-                  <Input
-                    value={memberUserId}
-                    onChange={(e) => setMemberUserId(e.target.value)}
-                    placeholder="TG ID"
-                  />
-                  <Input
-                    value={memberRole}
-                    onChange={(e) => setMemberRole(e.target.value)}
-                    placeholder="Роль (player/organizer/spectator)"
-                  />
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Button
+                      variant={!isCreatingNew ? "default" : "outline"}
+                      onClick={() => setIsCreatingNew(false)}
+                      className="flex-1"
+                    >
+                      Существующий
+                    </Button>
+                    <Button
+                      variant={isCreatingNew ? "default" : "outline"}
+                      onClick={() => setIsCreatingNew(true)}
+                      className="flex-1"
+                    >
+                      Новый
+                    </Button>
+                  </div>
+
+                  {!isCreatingNew ? (
+                    <div className="space-y-2">
+                      <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите игрока из списка" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {users.map((user) => (
+                            <SelectItem key={user.tg_id} value={user.tg_id.toString()}>
+                              {user.custom_name || user.tg_name} (ID: {user.tg_id})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-sm text-muted-foreground">
+                        Создание нового игрока добавит его в систему и позволит установить начальный рейтинг
+                      </div>
+                      <Input
+                        value={newPlayerName}
+                        onChange={(e) => setNewPlayerName(e.target.value)}
+                        placeholder="Имя нового игрока"
+                      />
+                      <Input
+                        value={newPlayerTgId}
+                        onChange={(e) => setNewPlayerTgId(e.target.value)}
+                        placeholder="TG ID нового игрока (опционально, сгенерируется автоматически)"
+                      />
+                    </div>
+                  )}
+
+                  {/* Поля для имени и рейтинга только для новых игроков */}
+                  {isCreatingNew && (
+                    <>
+                      <Input
+                        value={memberName}
+                        onChange={(e) => setMemberName(e.target.value)}
+                        placeholder="Имя игрока (если отличается от стандартного)"
+                      />
+                      <Input
+                        value={memberRating}
+                        onChange={(e) => setMemberRating(e.target.value)}
+                        placeholder="Начальный рейтинг (только для новых игроков)"
+                        type="number"
+                      />
+                    </>
+                  )}
+
+                  {/* Поле "кто позвал" только для новых игроков */}
+                  {isCreatingNew && (
+                    <Select value={memberInvitedBy} onValueChange={setMemberInvitedBy}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Кто позвал (выберите из списка)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Не указано</SelectItem>
+                        {users.map((user) => (
+                          <SelectItem key={user.tg_id} value={user.tg_id.toString()}>
+                            {user.custom_name || user.tg_name} (ID: {user.tg_id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  <Select value={memberRole} onValueChange={setMemberRole}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите роль" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roleOptions.map((role) => (
+                        <SelectItem key={role.value} value={role.value}>
+                          {role.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -501,7 +694,13 @@ export function Admin() {
                     />
                     Может редактировать
                   </label>
-                  <Button onClick={handleAddMember}>Добавить</Button>
+
+                  <Button 
+                    onClick={handleAddMember}
+                    disabled={!isCreatingNew ? !selectedUserId : !newPlayerName}
+                  >
+                    Добавить в матч
+                  </Button>
                 </div>
               </div>
 

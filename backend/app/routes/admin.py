@@ -469,6 +469,10 @@ def add_match_members(match_id: int):
         tg_id = int(member["tg_id"])
         role = member.get("role", "player")
         can_edit = bool(member.get("can_edit", False))
+        name = member.get("name")
+        rating = member.get("rating")
+        invited_by_tg_id = member.get("invited_by_tg_id")
+        
         record = (
             db.query(MatchMember)
             .filter_by(match_id=match_id, tg_id=tg_id)
@@ -481,11 +485,17 @@ def add_match_members(match_id: int):
                     tg_id=tg_id,
                     role=role,
                     can_edit=can_edit,
+                    name=name,
+                    rating=rating,
+                    invited_by_tg_id=invited_by_tg_id,
                 )
             )
         else:
             record.role = role
             record.can_edit = can_edit
+            record.name = name
+            record.rating = rating
+            record.invited_by_tg_id = invited_by_tg_id
     db.commit()
     return ok()
 
@@ -518,6 +528,56 @@ def patch_segment(match_id: int, segment_id: int):
         segment.score_b = int(data["score_b"])
     if data.get("ended_at") == "now":
         segment.ended_at = datetime.utcnow()
+    db.commit()
+    return ok()
+
+
+@bp.delete("/matches/<int:match_id>")
+def delete_match(match_id: int):
+    if not _require_admin():
+        return err("forbidden", 403)
+    db = get_db()
+    match = db.query(Match).filter_by(id=match_id).one_or_none()
+    if match is None:
+        return err("match_not_found", 404)
+    
+    # Удаляем все связанные данные в правильном порядке
+    # 1. Rating logs
+    db.query(RatingLog).filter_by(match_id=match_id).delete()
+    
+    # 2. Interaction logs
+    db.query(InteractionLog).filter_by(match_id=match_id).delete()
+    
+    # 3. Feedback
+    db.query(Feedback).filter_by(match_id=match_id).delete()
+    
+    # 4. Events
+    db.query(Event).filter_by(match_id=match_id).delete()
+    
+    # 5. Segments
+    db.query(Segment).filter_by(match_id=match_id).delete()
+    
+    # 6. Payment requests
+    db.query(PaymentRequest).filter_by(match_id=match_id).delete()
+    
+    # 7. Payment statuses
+    db.query(PaymentStatus).filter_by(match_id=match_id).delete()
+    
+    # 8. Payment info
+    db.query(PaymentInfo).filter_by(match_id=match_id).delete()
+    
+    # 9. Match members
+    db.query(MatchMember).filter_by(match_id=match_id).delete()
+    
+    # 10. Team variants
+    db.query(TeamVariant).filter_by(match_id=match_id).delete()
+    
+    # 11. Team current
+    db.query(TeamCurrent).filter_by(match_id=match_id).delete()
+    
+    # 12. Сам матч
+    db.delete(match)
+    
     db.commit()
     return ok()
 

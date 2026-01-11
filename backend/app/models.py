@@ -51,7 +51,7 @@ class Match(Base):
     scheduled_at = Column(DateTime, nullable=True)
     venue = Column(String, nullable=False)
     status = Column(String, nullable=False, default="created")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
     finished_at = Column(DateTime, nullable=True)
 
 
@@ -62,6 +62,9 @@ class MatchMember(Base):
     role = Column(String, nullable=False)
     can_edit = Column(Boolean, nullable=False, default=False)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    name = Column(String, nullable=True)  # Имя игрока для матча
+    rating = Column(Float, nullable=True)  # Рейтинг на момент матча
+    invited_by_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=True)  # Кто позвал
 
 
 class TeamVariant(Base):
