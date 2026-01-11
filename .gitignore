@@ -3,3 +3,31 @@ __pycache__/
 *.zip
 .env
 backend/uploads/
+
+# Virtual environments
+backend/venv/
+.venv/
+venv/
+
+# Node modules and build artifacts
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3

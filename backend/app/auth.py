@@ -24,10 +24,11 @@ def _check_telegram_init_data(init_data: str, bot_token: str) -> dict:
     if auth_date:
         try:
             auth_timestamp = int(auth_date)
-            if time.time() - auth_timestamp > 24 * 60 * 60:  # 24 часа
-                raise ValueError("auth_date_expired")
         except ValueError:
             raise ValueError("auth_date_invalid")
+        
+        if time.time() - auth_timestamp > 24 * 60 * 60:  # 24 часа
+            raise ValueError("auth_date_expired")
 
     data_check = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
     secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
