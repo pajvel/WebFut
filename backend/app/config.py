@@ -32,7 +32,7 @@ class Config:
     ADMIN_TG_ID = int(os.getenv("ADMIN_TG_ID", "0"))
     MODEL_STATE_TABLE = os.getenv("MODEL_STATE_TABLE", "model_states")
     SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "0") == "1"
-    DEV_AUTH_BYPASS = os.getenv("DEV_AUTH_BYPASS", "0") == "1"
+    DEV_AUTH_BYPASS = os.getenv("DEV_AUTH_BYPASS", "0") == "1" and os.getenv("FLASK_ENV", "production") == "development"
     DEV_TG_ID = int(os.getenv("DEV_TG_ID", "999000"))
     DEV_TG_NAME = os.getenv("DEV_TG_NAME", "Dev User")
     DEV_TG_AVATAR = os.getenv("DEV_TG_AVATAR", "")

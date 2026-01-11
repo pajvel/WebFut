@@ -48,10 +48,7 @@ def auth_telegram():
         except Exception as e:
             print(f"[AUTH DEV ERROR] {e}")
     
-    print(f"[AUTH] Full initData: {init_data}")
-    print(f"[AUTH] Bot token configured: {bool(Config.TELEGRAM_BOT_TOKEN)}")
-    print(f"[AUTH] Bot token: {Config.TELEGRAM_BOT_TOKEN[:20]}...")
-    print(f"[AUTH] Full bot token: {Config.TELEGRAM_BOT_TOKEN}")
+    print(f"[AUTH] Configured: bot_token={bool(Config.TELEGRAM_BOT_TOKEN)}, bypass={Config.DEV_AUTH_BYPASS}")
     try:
         parsed = _check_telegram_init_data(init_data, Config.TELEGRAM_BOT_TOKEN)
     except ValueError as exc:
