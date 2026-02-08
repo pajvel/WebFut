@@ -18,9 +18,9 @@ import { useMatText } from "../lib/mode18";
 import { formatVenueLabel } from "../lib/venue";
 
 enum MatchTab {
-  RESULT = "РРўРћР“",
-  EVENTS = "РЎРћР‘Р«РўРРЇ",
-  BEST = "Р›РЈР§РЁРР•"
+  RESULT = "ИТОГ",
+  EVENTS = "СОБЫТИЯ",
+  BEST = "ЛУЧШИЕ"
 }
 
 type PaymentStatusLabel = "unpaid" | "reported_paid" | "confirmed" | "rejected" | "pending";
@@ -99,11 +99,11 @@ const formatStatus = (status: MatchDetail["match"]["status"]) => {
 };
 
 const paymentStatusLabel = (status: PaymentStatusLabel) => {
-  if (status === "reported_paid") return "РћР–РР”РђР•Рў РџРћР”РўР’Р•Р Р–Р”Р•РќРРЇ";
-  if (status === "confirmed") return "РџРћР”РўР’Р•Р Р–Р”Р•РќРћ";
-  if (status === "rejected") return "РћРўРљР›РћРќР•РќРћ";
-  if (status === "pending") return "Р’ РћР‘Р РђР‘РћРўРљР•";
-  return "РќР• РћРџР›РђР§Р•РќРћ";
+  if (status === "reported_paid") return "ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ";
+  if (status === "confirmed") return "ПОДТВЕРЖДЕНО";
+  if (status === "rejected") return "ОТКЛОНЕНО";
+  if (status === "pending") return "В ОБРАБОТКЕ";
+  return "НЕ ОПЛАЧЕНО";
 };
 
 const getInitials = (name: string) => {
@@ -320,7 +320,7 @@ export function FinishedMatch() {
     let runningB = 0;
 
     const formatSegmentLabel = (segNo: number, isButtGame: boolean) =>
-      isButtGame ? `РЎР•Р“РњР•РќРў ${segNo} вЂў РќРђ Р–РћРџРЈ` : `РЎР•Р“РњР•РќРў ${segNo}`;
+      isButtGame ? `СЕГМЕНТ ${segNo} • НА ЖОПУ` : `СЕГМЕНТ ${segNo}`;
 
     const segmentLabel = new Map<number, string>();
     data.segments.forEach((seg) => {
@@ -347,7 +347,7 @@ export function FinishedMatch() {
         team,
         scoreAfter: `${runningA} : ${runningB}`,
         time: toTime(event.created_at),
-        period: segmentLabel.get(event.segment_id) || "РЎР•Р“РњР•РќРў"
+        period: segmentLabel.get(event.segment_id) || "СЕГМЕНТ"
       };
     };
 
@@ -374,7 +374,7 @@ export function FinishedMatch() {
         payerName:
           (payerInfo?.payer_tg_id
             ? data.members.find((member) => member.tg_id === payerInfo.payer_tg_id)?.name
-            : null) || "РќР• Р’Р«Р‘Р РђРќ",
+            : null) || "НЕ ВЫБРАН",
         fio: payerInfo?.payer_fio || "вЂ”",
         phone: payerInfo?.payer_phone || "вЂ”",
         bank: payerInfo?.payer_bank || "вЂ”"
@@ -468,12 +468,12 @@ export function FinishedMatch() {
     };
   }, [comparisonPairs, feedback]);
 
-  const errorToast = error ? <StatusCard title={t("РћС€РёР±РєР°")} message={error} onClose={() => setError(null)} /> : null;
+  const errorToast = error ? <StatusCard title={t("Ошибка")} message={error} onClose={() => setError(null)} /> : null;
 
   if (!matchUi) {
     return (
       <>
-        <div className="text-sm text-muted-foreground px-4 py-6">{t("Р—Р°РіСЂСѓР·РєР°...")}</div>
+        <div className="text-sm text-muted-foreground px-4 py-6">{t("Загрузка...")}</div>
         {errorToast}
       </>
     );
@@ -533,7 +533,7 @@ export function FinishedMatch() {
             onSavePayer={async () => {
               if (!matchId) return;
               if (!/^\+7\d{10}$/.test(payerForm.phone)) {
-                setError("РўРµР»РµС„РѕРЅ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ +79092811654");
+                setError("Телефон должен быть в формате +79092811654");
                 return;
               }
               try {
@@ -762,7 +762,7 @@ const ResultTab = ({
         <div className="flex flex-col items-center">
           {data.isLastSegmentButt ? (
             <div className="px-3 py-1 rounded-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[10px] font-black uppercase tracking-wider">
-              РќРђ Р–РћРџРЈ
+              НА ЖОПУ
             </div>
           ) : (
             <div className="text-[10px] font-bold opacity-30 uppercase tracking-tight">{data.location}</div>
@@ -796,7 +796,7 @@ const ResultTab = ({
 
       {isPlayer || isAdmin ? (
         <section className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-4 brutal-shadow space-y-4 rounded-[32px] transition-colors">
-          <h2 className="text-base font-black italic uppercase leading-none text-[var(--text-main)]">РџР›РђРўР•Р–Р</h2>
+          <h2 className="text-base font-black italic uppercase leading-none text-[var(--text-main)]">ПЛАТЕЖИ</h2>
           <div className="bg-[var(--bg-page)]/50 p-3 border-2 border-[var(--border-main)] rounded-2xl relative">
             {isEditingPayer ? (
               <div className="space-y-2">
@@ -805,7 +805,7 @@ const ResultTab = ({
                   value={payerForm.fio}
                   onChange={(e) => setPayerForm({ ...payerForm, fio: e.target.value })}
                   className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
-                  placeholder="Р¤РРћ РџРћР›РЈР§РђРўР•Р›РЇ"
+                  placeholder="ФИО ПОЛУЧАТЕЛЯ"
                 />
                 <input
                   type="tel"
@@ -813,14 +813,14 @@ const ResultTab = ({
                   value={payerForm.phone}
                   onChange={(e) => setPayerForm({ ...payerForm, phone: normalizePhoneInput(e.target.value) })}
                   className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
-                  placeholder="РўР•Р›Р•Р¤РћРќ"
+                  placeholder="ТЕЛЕФОН"
                 />
                 <input
                   type="text"
                   value={payerForm.bank}
                   onChange={(e) => setPayerForm({ ...payerForm, bank: e.target.value })}
                   className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
-                  placeholder="Р‘РђРќРљ"
+                  placeholder="БАНК"
                 />
                 <button
                   onClick={() => {
@@ -829,20 +829,20 @@ const ResultTab = ({
                   }}
                   className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-2 font-black italic text-[9px] uppercase rounded-lg"
                 >
-                  РЎРћРҐР РђРќРРўР¬
+                  СОХРАНИТЬ
                 </button>
               </div>
             ) : (
               <>
-                <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">РџР›РђРўР•Р›Р¬Р©РРљ: {data.payer.payerName}</div>
-                <div className="text-[9px] font-bold uppercase opacity-50 mt-1 text-[var(--text-main)]">Р¤РРћ: {data.payer.fio}</div>
+                <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ПЛАТЕЛЬЩИК: {data.payer.payerName}</div>
+                <div className="text-[9px] font-bold uppercase opacity-50 mt-1 text-[var(--text-main)]">ФИО: {data.payer.fio}</div>
                 <div className="font-black text-xs italic mt-0.5 text-[var(--text-main)]">{data.payer.phone} ({data.payer.bank})</div>
                 {isPayer ? (
                   <button
                     onClick={() => setIsEditingPayer(true)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 border-2 border-[var(--border-main)] px-3 py-1.5 font-black italic text-[8px] uppercase bg-[var(--bg-surface)] text-[var(--text-main)] active:scale-90 brutal-shadow-sm transition-all"
                   >
-                    РР—РњР•РќРРўР¬
+                    ИЗМЕНИТЬ
                   </button>
                 ) : (
                   <button
@@ -853,7 +853,7 @@ const ResultTab = ({
                         : "bg-[var(--bg-surface)] text-[var(--text-main)] active:scale-90 brutal-shadow-sm"
                     }`}
                   >
-                    {copied ? "РЎРљРћРџРР РћР’РђРќРћ" : "РљРћРџРР РћР’РђРўР¬"}
+                    {copied ? "СКОПИРОВАНО" : "КОПИРОВАТЬ"}
                   </button>
                 )}
               </>
@@ -863,7 +863,7 @@ const ResultTab = ({
           {(isPlayer || isOrganizer) && (
             <div className="flex items-center justify-between gap-3 pt-1">
               <div className="flex-1">
-                <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">Р’РђРЁ РЎРўРђРўРЈРЎ</div>
+                <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ВАШ СТАТУС</div>
                 <div
                   className={`font-black italic uppercase text-xs text-[var(--text-main)] ${
                     myPaymentStatus === "confirmed"
@@ -880,7 +880,7 @@ const ResultTab = ({
                 onClick={onMarkPaid}
                 className="bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
               >
-                РћРўРџР РђР’РР›
+                ОТПРАВИЛ
               </button>
             </div>
           )}
@@ -891,7 +891,7 @@ const ResultTab = ({
                 onClick={onRequestConfirmPayments}
                 className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
               >
-                РџРћР”РўР’Р•Р Р”РРўР¬ РћРџР›РђРўР«
+                ПОДТВЕРДИТЬ ОПЛАТЫ
               </button>
             </div>
           )}
@@ -902,29 +902,29 @@ const ResultTab = ({
                 onClick={onRequestSelectPayer}
                 className="w-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] font-black italic px-5 py-3 brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
               >
-                Р’Р«Р‘Р РђРўР¬ РџР›РђРўР•Р›Р¬Р©РРљРђ
+                ВЫБРАТЬ ПЛАТЕЛЬЩИКА
               </button>
             </div>
           )}
 
-          {/* СЃРїРёСЃРѕРє РѕРїР»Р°С‚ РїРѕРєР°Р·С‹РІР°РµРј С‚РѕР»СЊРєРѕ РІ РјРѕРґР°Р»РєРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ */}
+          {/* список оплат показываем только в модалке подтверждения */}
         </section>
       ) : null}
 
       {isPlayer ? (
         <section className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-4 brutal-shadow space-y-8 rounded-[32px] transition-colors">
           <h2 className="text-2xl font-black italic uppercase border-b-4 border-[var(--border-main)] pb-3 text-[var(--text-main)]">
-            РћР¦Р•РќРљРђ РњРђРўР§Рђ
+            ОЦЕНКА МАТЧА
           </h2>
 
         <div className="grid grid-cols-2 gap-4">
           <FeedbackSlot
-            label="MVP (Р›РЈР§РЁРР™)"
+            label="MVP (ЛУЧШИЙ)"
             player={bestPlayer}
             onClick={() => setActivePicker({ type: "SINGLE", target: "BEST", teamFilter: "ALL" })}
           />
           <FeedbackSlot
-            label="LVP (РҐРЈР”РЁРР™)"
+            label="LVP (ХУДШИЙ)"
             player={worstPlayer}
             onClick={() => setActivePicker({ type: "SINGLE", target: "WORST", teamFilter: "ALL" })}
             color="bg-[var(--bg-page)]/50"
@@ -933,7 +933,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            Р”РЈР­Р›Р РњРђРўР§Рђ
+            ДУЭЛИ МАТЧА
           </div>
           <div className="space-y-2">
             {duelPairs.map((duel) => {
@@ -966,7 +966,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            Р›РЈР§РЁРђРЇ РЎР’РЇР—РљРђ (Р’Р«Р‘Р РђРўР¬ 2)
+            ЛУЧШАЯ СВЯЗКА (ВЫБРАТЬ 2)
           </div>
           <div className="grid grid-cols-2 gap-4">
             <SynergyBlock
@@ -984,7 +984,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            РџРђР Р« Р”РћРњРРќРР РћР’РђРќРРЇ
+            ПАРЫ ДОМИНИРОВАНИЯ
           </div>
           <div className="space-y-4">
             <DominationRow
@@ -1007,12 +1007,12 @@ const ResultTab = ({
 
         <div className="grid grid-cols-2 gap-4">
           <FeedbackSlot
-            label="Р›РЈР§РЁРР™ РђРўРђРљРЈР®Р©РР™"
+            label="ЛУЧШИЙ АТАКУЮЩИЙ"
             player={bestAttacker}
             onClick={() => setActivePicker({ type: "SINGLE", target: "ATTACKER", teamFilter: "ALL" })}
           />
           <FeedbackSlot
-            label="Р›РЈР§РЁРР™ Р—РђР©РРўРќРРљ"
+            label="ЛУЧШИЙ ЗАЩИТНИК"
             player={bestDefender}
             onClick={() => setActivePicker({ type: "SINGLE", target: "DEFENDER", teamFilter: "ALL" })}
           />
@@ -1293,7 +1293,7 @@ const PlayerPickerOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">Р’Р«Р‘Р РђРўР¬ РР“Р РћРљРђ</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ВЫБРАТЬ ИГРОКА</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>
@@ -1331,7 +1331,7 @@ const PlayerPickerOverlay = ({
             onClick={() => onConfirm(selectedIds.map((id) => players.find((p) => p.id === id)).filter(Boolean) as Player[])}
             className="w-full py-4 bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic uppercase rounded-2xl disabled:opacity-20 transition-all border-2 border-[var(--border-main)] brutal-shadow-sm"
           >
-            РџРћР”РўР’Р•Р Р”РРўР¬ Р’Р«Р‘РћР  ({selectedIds.length}/{config.limit})
+            ПОДТВЕРДИТЬ ВЫБОР ({selectedIds.length}/{config.limit})
           </button>
         )}
       </div>
@@ -1555,7 +1555,7 @@ const BestTab = ({ data, mvpCountdown }: { data: MatchDataUi; mvpCountdown: { ho
           <h2 className="text-4xl font-black italic uppercase leading-none tracking-tighter">MVP RACE</h2>
           <div className="flex flex-col items-center">
             <div className="font-black italic text-[14px] uppercase tracking-tight opacity-80 tabular-nums">
-              Р”Рћ РљРћРќР¦Рђ РћРЎРўРђР›РћРЎР¬ {mvpCountdown?.hours ?? 0} Р§. {mvpCountdown?.minutes ?? 0} Рњ.
+              ДО КОНЦА ОСТАЛОСЬ {mvpCountdown?.hours ?? 0} Ч. {mvpCountdown?.minutes ?? 0} М.
             </div>
           </div>
         </div>
@@ -1714,7 +1714,7 @@ const PaymentReportOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">РџРћР”РўР’Р•Р Р”РРўР¬ РћРџР›РђРўР«</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ПОДТВЕРДИТЬ ОПЛАТЫ</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>
@@ -1769,7 +1769,7 @@ const PayerSelectOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">Р’Р«Р‘Р РђРўР¬ РџР›РђРўР•Р›Р¬Р©РРљРђ</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ВЫБРАТЬ ПЛАТЕЛЬЩИКА</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>
