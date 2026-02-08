@@ -791,6 +791,109 @@ def rating_logs():
     )
 
 
+@bp.get("/position-logs")
+def position_logs():
+    if not _require_admin():
+        return err("forbidden", 403)
+    db = get_db()
+    context_id = request.args.get("context_id", type=int) or 1
+    player_id = request.args.get("player_id")
+    match_id = request.args.get("match_id", type=int)
+    limit = request.args.get("limit", type=int) or 500
+    threshold = 1e-9
+
+    query = (
+        db.query(Match)
+        .filter_by(context_id=context_id, status="finished")
+        .order_by(Match.created_at.asc(), Match.id.asc())
+    )
+    if match_id:
+        query = query.filter(Match.id == match_id)
+    matches = query.all()
+
+    state = TeamModelState.empty(TeamConfig())
+    logs: list[dict] = []
+    seq = 1
+
+    def _role_value(st: TeamModelState, pid: str, key: str) -> float:
+        player = st.players.get(pid)
+        if not player:
+            return 0.0
+        return float((player.role_tendencies or {}).get(key, 0.0))
+
+    def _append_diffs(prev_state: TeamModelState, next_state: TeamModelState, *, source: str, mid: int, created_at: str) -> None:
+        nonlocal seq
+        pids = set(prev_state.players.keys()) | set(next_state.players.keys())
+        for pid in pids:
+            if player_id and str(pid) != str(player_id):
+                continue
+            old_att = _role_value(prev_state, pid, "attacker")
+            new_att = _role_value(next_state, pid, "attacker")
+            old_def = _role_value(prev_state, pid, "defender")
+            new_def = _role_value(next_state, pid, "defender")
+            d_att = new_att - old_att
+            d_def = new_def - old_def
+            if abs(d_att) <= threshold and abs(d_def) <= threshold:
+                continue
+            logs.append(
+                {
+                    "id": seq,
+                    "match_id": mid,
+                    "player_id": str(pid),
+                    "source": source,
+                    "old_attacker": old_att,
+                    "new_attacker": new_att,
+                    "delta_attacker": d_att,
+                    "old_defender": old_def,
+                    "new_defender": new_def,
+                    "delta_defender": d_def,
+                    "created_at": created_at,
+                }
+            )
+            seq += 1
+
+    for match in matches:
+        created_at = (match.finished_at or match.created_at).isoformat()
+        team_match = build_team_model_match(db, match.id)
+
+        state_match = copy.deepcopy(state)
+        update_from_match_with_breakdown(state_match, team_match, quick_feedback=None, expanded_feedback=None)
+        _append_diffs(state, state_match, source="match", mid=match.id, created_at=created_at)
+
+        quick_all, expanded_all = build_feedback(db, match.id)
+        if quick_all or expanded_all:
+            state_feedback = copy.deepcopy(state)
+            update_from_match_with_breakdown(
+                state_feedback,
+                team_match,
+                quick_feedback=quick_all,
+                expanded_feedback=expanded_all,
+            )
+            rows = db.query(Feedback).filter_by(match_id=match.id).all()
+            for row in rows:
+                quick_wo, expanded_wo = build_feedback(db, match.id, exclude_tg_id=row.tg_id)
+                state_wo = copy.deepcopy(state)
+                update_from_match_with_breakdown(
+                    state_wo,
+                    team_match,
+                    quick_feedback=quick_wo,
+                    expanded_feedback=expanded_wo,
+                )
+                _append_diffs(
+                    state_wo,
+                    state_feedback,
+                    source=f"feedback:{row.tg_id}",
+                    mid=match.id,
+                    created_at=created_at,
+                )
+            state = state_feedback
+        else:
+            state = state_match
+
+    logs = list(reversed(logs))[:limit]
+    return ok({"logs": logs})
+
+
 @bp.get("/interactions")
 def list_interactions():
     if not _require_admin():
@@ -898,7 +1001,9 @@ def interaction_logs():
     kind = request.args.get("kind")
     player = request.args.get("player")
     query = db.query(InteractionLog).filter_by(context_id=context_id).order_by(InteractionLog.created_at.desc())
-    if venue and venue not in ("all", "__global__"):
+    if venue == "__global__":
+        query = query.filter(InteractionLog.venue == "__global__")
+    elif venue and venue != "all":
         venue_keys = _venue_keys(venue)
         if len(venue_keys) == 1:
             query = query.filter(InteractionLog.venue == venue_keys[0])
@@ -954,7 +1059,9 @@ def rebuild_interaction_logs():
         state_match = copy.deepcopy(state)
         update_from_match_with_breakdown(state_match, team_match, quick_feedback=None, expanded_feedback=None)
         log_interaction_diffs(db, context_id, state, state_match, match_id=match.id, source="match")
+        feedback_rows = db.query(Feedback).filter_by(match_id=match.id).all()
         if quick_feedback or expanded_feedback:
+            # Apply full current feedback set for state progression.
             state_feedback = copy.deepcopy(state)
             update_from_match_with_breakdown(
                 state_feedback,
@@ -962,14 +1069,25 @@ def rebuild_interaction_logs():
                 quick_feedback=quick_feedback,
                 expanded_feedback=expanded_feedback,
             )
-            log_interaction_diffs(
-                db,
-                context_id,
-                state_match,
-                state_feedback,
-                match_id=match.id,
-                source="feedback",
-            )
+            if feedback_rows:
+                # Log only current effective contribution of each stored feedback author.
+                for row in feedback_rows:
+                    quick_wo, expanded_wo = build_feedback(db, match.id, exclude_tg_id=row.tg_id)
+                    state_without_author = copy.deepcopy(state)
+                    update_from_match_with_breakdown(
+                        state_without_author,
+                        team_match,
+                        quick_feedback=quick_wo,
+                        expanded_feedback=expanded_wo,
+                    )
+                    log_interaction_diffs(
+                        db,
+                        context_id,
+                        state_without_author,
+                        state_feedback,
+                        match_id=match.id,
+                        source=f"feedback:{row.tg_id}",
+                    )
             state = state_feedback
         else:
             state = state_match

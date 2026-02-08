@@ -190,8 +190,8 @@ def generate(match_id: int):
                 why_text=why,
             )
         )
-    # Preserve finished matches status when tweaking teams from admin.
-    if match.status != "finished":
+    # Preserve finished/live status when tweaking teams from admin.
+    if match.status not in ("finished", "live"):
         match.status = "generating"
     db.commit()
     return ok(
@@ -355,7 +355,7 @@ def set_custom(match_id: int):
         if team_name_b:
             current.current_teams_json["name_b"] = team_name_b
         db.add(current)
-    if match.status != "finished":
+    if match.status not in ("finished", "live"):
         match.status = "generating"
     db.commit()
     return ok({"why_text": why_text, "power": _power_metrics(state, teams, match.venue)})

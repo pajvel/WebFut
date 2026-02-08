@@ -4,7 +4,16 @@ from flask import Blueprint, request
 
 from ..auth import require_user
 from ..db import get_db
-from ..models import Feedback, Match, MatchMember, RatingLog, TeamCurrent, TeamVariant, UserSettings
+from ..models import (
+    Feedback,
+    InteractionLog,
+    Match,
+    MatchMember,
+    RatingLog,
+    TeamCurrent,
+    TeamVariant,
+    UserSettings,
+)
 from ..services.interaction_log import log_interaction_diffs
 from ..services.match import build_feedback, build_team_model_match
 from ..services.model_state import load_state, save_state
@@ -135,7 +144,7 @@ def submit_feedback(match_id: int):
         record.mvp_vote_tg_id = mvp_vote
     db.commit()
 
-    prev_state = load_state(db, match.context_id)
+    _ = load_state(db, match.context_id)
     state = TeamModelState.empty(TeamConfig())
     matches = (
         db.query(Match)
@@ -182,6 +191,46 @@ def submit_feedback(match_id: int):
                 )
             )
     save_state(db, match.context_id, state)
-    log_interaction_diffs(db, match.context_id, prev_state, state, match_id=match.id, source="feedback")
+
+    # Keep only effective interaction impact of the currently saved feedback by this user.
+    state_without_author = TeamModelState.empty(TeamConfig())
+    state_with_author = TeamModelState.empty(TeamConfig())
+    for finished in matches:
+        team_match = build_team_model_match(db, finished.id)
+        quick_with, expanded_with = build_feedback(db, finished.id)
+        if finished.id == match.id:
+            quick_without, expanded_without = build_feedback(
+                db,
+                finished.id,
+                exclude_tg_id=user.tg_id,
+            )
+        else:
+            quick_without, expanded_without = quick_with, expanded_with
+        update_from_match_with_breakdown(
+            state_without_author,
+            team_match,
+            quick_feedback=quick_without,
+            expanded_feedback=expanded_without,
+        )
+        update_from_match_with_breakdown(
+            state_with_author,
+            team_match,
+            quick_feedback=quick_with,
+            expanded_feedback=expanded_with,
+        )
+
+    db.query(InteractionLog).filter_by(
+        context_id=match.context_id,
+        match_id=match.id,
+        source=f"feedback:{user.tg_id}",
+    ).delete(synchronize_session=False)
+    log_interaction_diffs(
+        db,
+        match.context_id,
+        state_without_author,
+        state_with_author,
+        match_id=match.id,
+        source=f"feedback:{user.tg_id}",
+    )
     db.commit()
     return ok()

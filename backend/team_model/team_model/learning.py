@@ -164,12 +164,17 @@ def update_from_match(
         losing_team = set(match.team_b)
 
     losing_weights: dict[str, float] = {}
+    losing_bonus_multiplier: dict[str, float] = {}
     if losing_team:
         losing_players = [p for p in players if p.name in losing_team]
         total = sum(effective_rating(p, venue, cfg) for p in losing_players)
         if total > 0:
             for p in losing_players:
                 losing_weights[p.name] = effective_rating(p, venue, cfg) / total
+            equal_weight = 1.0 / max(1, len(losing_players))
+            for p in losing_players:
+                w = losing_weights.get(p.name, 0.0)
+                losing_bonus_multiplier[p.name] = (equal_weight / w) if w > 0 else 1.0
 
     event_bonus: dict[str, float] = defaultdict(float)
     for event in match.events:
@@ -185,10 +190,10 @@ def update_from_match(
             base_delta = base_delta_b
         if losing_team and player.name in losing_team and losing_weights:
             base_delta = (team_a_impulse if player.name in match.team_a else team_b_impulse) * losing_weights[player.name]
-        quick_adj = quick_adjustments.get(player.name, 0.0)
-        quick_cap = abs(base_delta) * cfg.quick_adjustment_cap_pct
-        quick_adj = clamp(quick_adj, -quick_cap, quick_cap) if quick_cap > 0 else 0.0
-        raw_delta = base_delta + event_bonus.get(player.name, 0.0) + quick_adj
+        bonus_mult = losing_bonus_multiplier.get(player.name, 1.0)
+        event_adj = event_bonus.get(player.name, 0.0) * bonus_mult
+        quick_adj = quick_adjustments.get(player.name, 0.0) * bonus_mult
+        raw_delta = base_delta + event_adj + quick_adj
 
         r_pre = effective_rating(player, venue, cfg)
         raw_delta *= _top_player_multiplier(raw_delta, r_pre, avg_rating, cfg)
@@ -252,12 +257,17 @@ def update_from_match_with_breakdown(
         losing_team = set(match.team_b)
 
     losing_weights: dict[str, float] = {}
+    losing_bonus_multiplier: dict[str, float] = {}
     if losing_team:
         losing_players = [p for p in players if p.name in losing_team]
         total = sum(effective_rating(p, venue, cfg) for p in losing_players)
         if total > 0:
             for p in losing_players:
                 losing_weights[p.name] = effective_rating(p, venue, cfg) / total
+            equal_weight = 1.0 / max(1, len(losing_players))
+            for p in losing_players:
+                w = losing_weights.get(p.name, 0.0)
+                losing_bonus_multiplier[p.name] = (equal_weight / w) if w > 0 else 1.0
 
     event_bonus: dict[str, float] = defaultdict(float)
     goal_bonus: dict[str, float] = defaultdict(float)
@@ -290,10 +300,15 @@ def update_from_match_with_breakdown(
             base_delta = base_delta_b
         if losing_team and player.name in losing_team and losing_weights:
             base_delta = (team_a_impulse if player.name in match.team_a else team_b_impulse) * losing_weights[player.name]
-        quick_adj = quick_adjustments.get(player.name, 0.0)
-        quick_cap = abs(base_delta) * cfg.quick_adjustment_cap_pct
-        quick_adj = clamp(quick_adj, -quick_cap, quick_cap) if quick_cap > 0 else 0.0
-        raw_delta = base_delta + event_bonus.get(player.name, 0.0) + quick_adj
+        bonus_mult = losing_bonus_multiplier.get(player.name, 1.0)
+        event_adj = event_bonus.get(player.name, 0.0) * bonus_mult
+        goal_adj = goal_bonus.get(player.name, 0.0) * bonus_mult
+        assist_adj = assist_bonus.get(player.name, 0.0) * bonus_mult
+        quick_adj = quick_adjustments.get(player.name, 0.0) * bonus_mult
+        mvp_adj = anchor_deltas.get(player.name, 0.0) * bonus_mult
+        pairwise_adj = pairwise_deltas.get(player.name, 0.0) * bonus_mult
+        fan_adj = fan_deltas.get(player.name, 0.0) * bonus_mult
+        raw_delta = base_delta + event_adj + quick_adj
 
         r_pre = effective_rating(player, venue, cfg)
         raw_delta *= _top_player_multiplier(raw_delta, r_pre, avg_rating, cfg)
@@ -306,13 +321,14 @@ def update_from_match_with_breakdown(
         deltas[player.name] = final_delta
         breakdown[player.name] = {
             "result_delta": base_delta,
-            "event_delta": event_bonus.get(player.name, 0.0),
-            "goal_delta": goal_bonus.get(player.name, 0.0),
-            "assist_delta": assist_bonus.get(player.name, 0.0),
+            "event_delta": event_adj,
+            "goal_delta": goal_adj,
+            "assist_delta": assist_adj,
             "quick_delta": quick_adj,
-            "mvp_delta": anchor_deltas.get(player.name, 0.0),
-            "pairwise_delta": pairwise_deltas.get(player.name, 0.0),
-            "fan_delta": fan_deltas.get(player.name, 0.0),
+            "mvp_delta": mvp_adj,
+            "pairwise_delta": pairwise_adj,
+            "fan_delta": fan_adj,
+            "loss_bonus_mult": bonus_mult,
             "raw_delta": raw_delta,
             "cap": cap,
             "final_delta": final_delta,

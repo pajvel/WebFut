@@ -144,8 +144,16 @@ def build_team_model_match(db, match_id: int) -> TeamMatch:
     )
 
 
-def build_feedback(db, match_id: int) -> tuple[QuickFeedback | None, ExpandedFeedback | None]:
-    records = db.query(Feedback).filter_by(match_id=match_id).all()
+def build_feedback(
+    db,
+    match_id: int,
+    *,
+    exclude_tg_id: int | None = None,
+) -> tuple[QuickFeedback | None, ExpandedFeedback | None]:
+    query = db.query(Feedback).filter_by(match_id=match_id)
+    if exclude_tg_id is not None:
+        query = query.filter(Feedback.tg_id != int(exclude_tg_id))
+    records = query.all()
     if not records:
         return None, None
 
@@ -177,8 +185,14 @@ def build_feedback(db, match_id: int) -> tuple[QuickFeedback | None, ExpandedFee
             stronger = comparisons.get(key)
             pair = pairs.get(key) or []
             if stronger and len(pair) == 2:
-                weaker = pair[0] if str(pair[1]) == str(stronger) else pair[1]
-                pairwise.append(PairwiseComparison(stronger=str(stronger), weaker=str(weaker)))
+                p0 = str(pair[0])
+                p1 = str(pair[1])
+                s = str(stronger)
+                # Duel vote: selected gets "+", non-selected gets "-"
+                if s == p0:
+                    pairwise.append(PairwiseComparison(stronger=s, weaker=p1))
+                elif s == p1:
+                    pairwise.append(PairwiseComparison(stronger=s, weaker=p0))
 
         expanded_pairs = answers.get("expanded_pairs") or {}
         syn_a = expanded_pairs.get("syn_team_a")
@@ -201,7 +215,40 @@ def build_feedback(db, match_id: int) -> tuple[QuickFeedback | None, ExpandedFee
         role_player = role_vote.get("player_id")
         role_type = role_vote.get("role")
         if role_player and role_type in ("attacker", "defender"):
-            roles.append(RoleFeedback(player=str(role_player), role=str(role_type), weight=1.0))
+            player_id = str(role_player)
+            # Role vote should also provide a small rating delta.
+            quick_fan.append(
+                FanResponse(
+                    player=player_id,
+                    polarity=1,
+                    interaction_type="role",
+                    role=str(role_type),
+                )
+            )
+
+        # New UI sends separate attacker/defender picks.
+        best_attacker = answers.get("best_attacker")
+        if best_attacker:
+            player_id = str(best_attacker)
+            quick_fan.append(
+                FanResponse(
+                    player=player_id,
+                    polarity=1,
+                    interaction_type="role",
+                    role="attacker",
+                )
+            )
+        best_defender = answers.get("best_defender")
+        if best_defender:
+            player_id = str(best_defender)
+            quick_fan.append(
+                FanResponse(
+                    player=player_id,
+                    polarity=1,
+                    interaction_type="role",
+                    role="defender",
+                )
+            )
 
     quick = None
     if quick_anchors or pairwise or quick_fan:

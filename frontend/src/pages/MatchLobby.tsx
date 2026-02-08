@@ -89,13 +89,13 @@ function PlayerCard({
           </div>
           {player.can_edit ? (
             <div className="shrink-0 px-1 rounded font-black text-[8px] uppercase tracking-tighter border border-[var(--border-main)] bg-[var(--bg-contrast)] text-[var(--text-contrast)]">
-              EDIT
+              ПРАВА
             </div>
           ) : null}
         </div>
         {isLarge && !player.can_edit ? (
           <div className="inline-block px-1 rounded font-black text-[8px] uppercase tracking-tighter border border-[var(--border-main)] bg-[var(--bg-page)] opacity-50 mt-1">
-            Ranked Player
+            РЕЙТИНГОВЫЙ
           </div>
         ) : null}
       </div>
@@ -104,7 +104,7 @@ function PlayerCard({
           className={`flex items-center justify-center border-2 border-[var(--border-main)] bg-[var(--bg-page)] ${
             isLarge ? "w-8 h-8 rounded-lg" : "w-6 h-6 rounded-md"
           }`}
-          title={player.role === "spectator" ? "Spectator" : "Player"}
+          title={player.role === "spectator" ? "Зритель" : "Игрок"}
         >
           <span className={`font-black uppercase ${isLarge ? "text-[10px]" : "text-[8px]"}`}>
             {player.role === "spectator" ? "S" : "P"}
@@ -329,7 +329,7 @@ export function MatchLobby() {
                       key={`empty-a-${i}`}
                       className="h-14 border-2 border-dashed border-[var(--border-main)] rounded-xl bg-[var(--bg-surface)] flex items-center justify-center"
                     >
-                      <span className="font-black italic text-[8px] text-[var(--text-main)] opacity-40 uppercase tracking-widest">EMPTY</span>
+                      <span className="font-black italic text-[8px] text-[var(--text-main)] opacity-40 uppercase tracking-widest">ПУСТО</span>
                     </div>
                   ))}
             </div>
@@ -351,7 +351,7 @@ export function MatchLobby() {
                       key={`empty-b-${i}`}
                       className="h-14 border-2 border-dashed border-[var(--border-main)] rounded-xl bg-[var(--bg-surface)] flex items-center justify-center"
                     >
-                      <span className="font-black italic text-[8px] text-[var(--text-main)] opacity-40 uppercase tracking-widest">EMPTY</span>
+                      <span className="font-black italic text-[8px] text-[var(--text-main)] opacity-40 uppercase tracking-widest">ПУСТО</span>
                     </div>
                   ))}
             </div>
@@ -362,7 +362,7 @@ export function MatchLobby() {
           <div className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] rounded-[2rem] p-4 shadow-brutal">
             <div className="flex items-center justify-between mb-3">
               <span className="font-black italic uppercase text-[10px] tracking-widest text-[var(--text-main)] opacity-50">
-                Team Power
+                СИЛА КОМАНД
               </span>
               <span className="font-black text-[10px] uppercase text-[var(--text-main)]">{strengthLabel}</span>
             </div>
@@ -378,7 +378,7 @@ export function MatchLobby() {
             </div>
             {data.team_current?.why_now_worse_text || data.team_variants?.[0]?.why_text ? (
               <div className="mt-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-main)] opacity-60">
-                Strategy Analysis:{" "}
+                АНАЛИЗ:{" "}
                 <span className="font-black text-[var(--text-main)]">
                   {data.team_current?.why_now_worse_text || data.team_variants?.[0]?.why_text}
                 </span>
@@ -390,9 +390,9 @@ export function MatchLobby() {
         <div className="bg-[var(--bg-surface)] p-5 border-2 border-[var(--border-main)] rounded-[2.5rem] shadow-brutal">
           <div className="flex items-center justify-between mb-4">
             <div className="flex flex-col">
-              <h3 className="font-black italic uppercase text-lg leading-none text-[var(--text-main)]">Payer</h3>
+              <h3 className="font-black italic uppercase text-lg leading-none text-[var(--text-main)]">ПЛАТЕЛЬЩИК</h3>
               <span className="font-bold text-[8px] opacity-50 uppercase tracking-wider text-[var(--text-main)]">
-                {payerInfo?.payer_tg_id ? `Active: ${payerInfo.payer_fio || payerInfo.payer_tg_id}` : "Awaiting Selection"}
+                {payerInfo?.payer_tg_id ? `АКТИВНЫЙ: ${payerInfo.payer_fio || payerInfo.payer_tg_id}` : "ОЖИДАЕТ ВЫБОРА"}
               </span>
             </div>
             <span
@@ -400,7 +400,7 @@ export function MatchLobby() {
                 payerInfo?.payer_tg_id ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]" : "bg-[var(--bg-page)] text-[var(--text-main)] opacity-50"
               }`}
             >
-              {payerInfo?.payer_tg_id ? "SELECTED" : "PENDING"}
+              {payerInfo?.payer_tg_id ? "ВЫБРАН" : "ОЖИДАНИЕ"}
             </span>
           </div>
           <button
@@ -419,18 +419,18 @@ export function MatchLobby() {
                 : "bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)]"
             }`}
           >
-            {canPayerAction ? "Assign Payer" : hasRequested ? "Request Sent" : "Request Payer"}
+            {canPayerAction ? "ВЫБРАТЬ ПЛАТЕЛЬЩИКА" : hasRequested ? "ЗАЯВКА ОТПРАВЛЕНА" : "ЗАПРОСИТЬ ПЛАТЕЛЬЩИКА"}
           </button>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <h3 className="font-black italic opacity-40 uppercase text-[10px] tracking-widest text-[var(--text-main)]">
-              Registered Pool
+              СПИСОК УЧАСТНИКОВ
             </h3>
             {myRole ? (
               <span className="text-[9px] font-black uppercase tracking-widest text-[var(--text-main)] opacity-40">
-                {myRole === "spectator" ? "SPECTATOR" : "PLAYER"}
+                {myRole === "spectator" ? "ЗРИТЕЛЬ" : "ИГРОК"}
               </span>
             ) : null}
           </div>
@@ -483,7 +483,7 @@ export function MatchLobby() {
             }}
             className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-4 font-black italic uppercase text-lg shadow-[6px_6px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
           >
-            {data.match.status === "generating" ? "Continue" : "Create Teams"}
+            {data.match.status === "generating" ? "ПРОДОЛЖИТЬ" : "СОЗДАТЬ КОМАНДЫ"}
           </button>
         </div>
       ) : null}
@@ -492,7 +492,7 @@ export function MatchLobby() {
         <div className="fixed inset-0 z-[110] flex flex-col bg-[var(--bg-page)]">
           <div className="flex-none p-4 bg-[var(--bg-surface)] border-b-4 border-[var(--border-main)]">
             <div className="flex items-center justify-between">
-              <h2 className="font-black italic uppercase text-xl text-[var(--text-main)]">Select Payer</h2>
+              <h2 className="font-black italic uppercase text-xl text-[var(--text-main)]">ВЫБОР ПЛАТЕЛЬЩИКА</h2>
               <button
                 onClick={() => setShowPayerModal(false)}
                 className="w-10 h-10 border-2 border-[var(--border-main)] shadow-brutal-sm active:shadow-none flex items-center justify-center bg-[var(--bg-surface)]"
@@ -539,7 +539,7 @@ export function MatchLobby() {
                 )}
                 <div className="flex-1 text-left">
                   <div className="font-black italic uppercase text-sm leading-none mb-1">{member.name}</div>
-                  <div className="font-bold text-[8px] uppercase tracking-widest opacity-50">PLAYER ELO: {member.rating ?? "--"}</div>
+                  <div className="font-bold text-[8px] uppercase tracking-widest opacity-50">ELO ИГРОКА: {member.rating ?? "--"}</div>
                 </div>
                 {payerInfo?.payer_tg_id === member.tg_id ? (
                   <div className="w-6 h-6 bg-[var(--text-contrast)] text-[var(--text-main)] rounded-full flex items-center justify-center">
@@ -556,7 +556,7 @@ export function MatchLobby() {
               onClick={() => setShowPayerModal(false)}
               className="w-full bg-[var(--bg-surface)] p-4 font-black uppercase text-xs border-2 border-[var(--border-main)] text-[var(--text-main)]"
             >
-              Cancel
+              ОТМЕНА
             </button>
           </div>
         </div>
@@ -565,7 +565,7 @@ export function MatchLobby() {
       {offerForMe && !hasPayer ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95 backdrop-blur-sm">
           <div className="w-full bg-[var(--bg-surface)] border-4 border-[var(--border-main)] p-6 rounded-[2.5rem] shadow-[12px_12px_0px_0px_var(--border-main)]">
-            <h2 className="font-black italic uppercase text-2xl mb-6 leading-none text-[var(--text-main)]">Payer Offer</h2>
+            <h2 className="font-black italic uppercase text-2xl mb-6 leading-none text-[var(--text-main)]">ПРЕДЛОЖЕНИЕ ПЛАТЕЛЬЩИКА</h2>
             <div className="space-y-4 mb-8">
               <p className="font-bold text-xs text-[var(--text-main)] italic leading-snug">
                 {t("Организатор предлагает вам оплатить матч. Согласны?")}
@@ -584,7 +584,7 @@ export function MatchLobby() {
                 }}
                 className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] p-4 font-black italic uppercase text-sm shadow-[6px_6px_0px_0px_var(--border-main)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
               >
-                Accept
+                ПРИНЯТЬ
               </button>
               <button
                 onClick={async () => {
@@ -598,7 +598,7 @@ export function MatchLobby() {
                 }}
                 className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-3 font-black uppercase text-[10px] active:scale-95 text-[var(--text-main)]"
               >
-                Decline
+                ОТКЛОНИТЬ
               </button>
             </div>
           </div>

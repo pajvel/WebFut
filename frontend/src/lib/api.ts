@@ -429,6 +429,27 @@ export async function adminRebuildRatingLogs(context_id = 1) {
   });
 }
 
+export async function adminGetPositionLogs(params: { context_id?: number; player_id?: string; match_id?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  query.set("context_id", String(params.context_id ?? 1));
+  if (params.player_id) query.set("player_id", params.player_id);
+  if (params.match_id) query.set("match_id", String(params.match_id));
+  if (params.limit) query.set("limit", String(params.limit));
+  return apiFetch<{ logs: Array<{
+    id: number;
+    match_id: number;
+    player_id: string;
+    source: string;
+    old_attacker: number;
+    new_attacker: number;
+    delta_attacker: number;
+    old_defender: number;
+    new_defender: number;
+    delta_defender: number;
+    created_at: string;
+  }> }>(`/admin/position-logs?${query.toString()}`);
+}
+
 export async function adminGetInteractions(params: { context_id?: number; venue: string; kind: "synergy" | "domination" }) {
   const query = new URLSearchParams();
   query.set("venue", params.venue);

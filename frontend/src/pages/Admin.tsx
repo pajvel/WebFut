@@ -24,6 +24,7 @@ import {
   goal,
   adminGetInteractionLogs,
   adminGetInteractions,
+  adminGetPositionLogs,
   adminRebuildInteractionLogs,
   adminRebuildState,
   adminRebuildRatingLogs,
@@ -43,7 +44,7 @@ import {
   ownGoal,
   patchEvent
 } from "../lib/api";
-import type { AdminUser, MatchDetail, MatchEvent, MatchSummary } from "../lib/types";
+import type { AdminUser, MatchDetail, MatchEvent, MatchMember, MatchSummary } from "../lib/types";
 import { useAppContext } from "../lib/app-context";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -157,6 +158,26 @@ export function Admin() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
   const [recalcLoading, setRecalcLoading] = useState(false);
+  const [ratingSearchPlayer, setRatingSearchPlayer] = useState("");
+  const [ratingSearchMatch, setRatingSearchMatch] = useState("");
+  const [positionSearch, setPositionSearch] = useState("");
+  const [positionLogItems, setPositionLogItems] = useState<
+    Array<{
+      id: number;
+      match_id: number;
+      player_id: string;
+      source: string;
+      old_attacker: number;
+      new_attacker: number;
+      delta_attacker: number;
+      old_defender: number;
+      new_defender: number;
+      delta_defender: number;
+      created_at: string;
+    }>
+  >([]);
+  const [positionLogsLoading, setPositionLogsLoading] = useState(false);
+  const [feedbackSearch, setFeedbackSearch] = useState("");
   const [feedbackVotesOpen, setFeedbackVotesOpen] = useState(false);
   const [feedbackVotesLoading, setFeedbackVotesLoading] = useState(false);
   const [feedbackMatchId, setFeedbackMatchId] = useState("");
@@ -174,10 +195,25 @@ export function Admin() {
   const [matrixPlayers, setMatrixPlayers] = useState<string[]>([]);
   const [matrixValues, setMatrixValues] = useState<number[][]>([]);
   const [matrixLoading, setMatrixLoading] = useState(false);
+  const [matrixSort, setMatrixSort] = useState<{
+    playerId: string | null;
+    axis: "row" | "col" | "none";
+    dir: "asc" | "desc" | "none";
+  }>({ playerId: null, axis: "none", dir: "none" });
   const [cellEdit, setCellEdit] = useState<{ a: string; b: string; value: string } | null>(null);
   const [rolesOpen, setRolesOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-  const [confirmState, setConfirmState] = useState<{ kind: "deleteMatch" | "deleteSegment"; segmentId?: number } | null>(null);
+  const [confirmState, setConfirmState] = useState<
+    | { kind: "deleteMatch" }
+    | { kind: "deleteSegment"; segmentId: number }
+    | { kind: "removeMember"; tgId: number; name: string }
+    | { kind: "deleteEvent"; eventId: number; label: string }
+    | null
+  >(null);
+  const [addRole, setAddRole] = useState<"player" | "organizer" | "spectator">("player");
+  const [teamNameA, setTeamNameA] = useState("");
+  const [teamNameB, setTeamNameB] = useState("");
+  const [teamNamesSaving, setTeamNamesSaving] = useState(false);
   const [interactionLogs, setInteractionLogs] = useState<Array<{
     id: number;
     context_id: number;
@@ -285,7 +321,11 @@ export function Admin() {
       setRecalcLoading(true);
       await adminRebuildRatingLogs(1);
       await adminRebuildState(1);
+      await adminRebuildInteractionLogs(1);
       loadState();
+      if (activeTab === "INTERACTIONS") {
+        await loadInteractionLogs(matrixKind, matrixVenue, interactionLogPlayer);
+      }
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -315,6 +355,56 @@ export function Admin() {
       .then(setMatchDetail)
       .catch((err) => setError(formatApiError(err)));
   }, [selectedMatchId]);
+
+  useEffect(() => {
+    if (activeTab === "RATING_LOGS" && logItems.length === 0 && !logsLoading) {
+      setLogsLoading(true);
+      adminGetRatingLogs({})
+        .then((result) => setLogItems(result.logs || []))
+        .catch((err) => setError(formatApiError(err)))
+        .finally(() => setLogsLoading(false));
+    }
+    if (activeTab === "FEEDBACK" && feedbackVotesItems.length === 0 && !feedbackVotesLoading) {
+      setFeedbackVotesLoading(true);
+      adminGetFeedbackVotes({})
+        .then((result) => setFeedbackVotesItems(result.items || []))
+        .catch((err) => setError(formatApiError(err)))
+        .finally(() => setFeedbackVotesLoading(false));
+    }
+    if (activeTab === "INTERACTIONS" && matrixPlayers.length === 0 && !matrixLoading) {
+      loadMatrix(matrixKind, matrixVenue);
+      loadInteractionLogs(matrixKind, matrixVenue, interactionLogPlayer);
+    }
+    if (activeTab === "POSITION_LOGS") {
+      if (positionLogItems.length === 0 && !positionLogsLoading) {
+        setPositionLogsLoading(true);
+        adminGetPositionLogs({ limit: 500 })
+          .then((result) => setPositionLogItems(result.logs || []))
+          .catch((err) => setError(formatApiError(err)))
+          .finally(() => setPositionLogsLoading(false));
+      }
+    }
+  }, [
+    activeTab,
+    logItems.length,
+    logsLoading,
+    feedbackVotesItems.length,
+    feedbackVotesLoading,
+    matrixPlayers.length,
+    matrixLoading,
+    matrixKind,
+    matrixVenue,
+    interactionLogPlayer,
+    positionLogItems.length,
+    positionLogsLoading
+  ]);
+
+  useEffect(() => {
+    const current = matchDetail?.team_current?.current_teams as ({ name_a?: string; name_b?: string } | null | undefined);
+    const fallback = matchDetail?.team_variants?.[0]?.teams as ({ name_a?: string; name_b?: string } | null | undefined);
+    setTeamNameA(current?.name_a || fallback?.name_a || "");
+    setTeamNameB(current?.name_b || fallback?.name_b || "");
+  }, [matchDetail]);
 
   // Загружаем TG профили при открытии модалки
   useEffect(() => {
@@ -389,8 +479,19 @@ export function Admin() {
     return "bg-[var(--bg-surface)] text-[var(--text-main)]";
   };
   const sourceLabel = (source: string) => {
-    if (source === "feedback") return "\u0437\u0430 \u0444\u0438\u0434\u0431\u0435\u043a";
+    if (source.startsWith("feedback")) return "\u0437\u0430 \u0444\u0438\u0434\u0431\u0435\u043a";
     return "\u0437\u0430 \u043c\u0430\u0442\u0447";
+  };
+  const feedbackAuthorFromSource = (source: string) => {
+    if (!source.startsWith("feedback:")) return null;
+    const tgId = source.split(":")[1];
+    if (!tgId) return null;
+    return nameById(tgId);
+  };
+  const positionSourceLabel = (source: string) => {
+    if (source === "match") return "MATCH";
+    if (source.startsWith("feedback")) return "FEEDBACK";
+    return source.toUpperCase();
   };
   const getVenueRating = (player: StatePlayer, venue: string) => {
     const keys = venueAliases[venue] || [venue];
@@ -545,6 +646,48 @@ export function Admin() {
       return (getVenue(a, venueB) - getVenue(b, venueB)) * dir;
     });
   }, [statePlayers, sortKey, sortDir, venueA, venueB, users]);
+  const filteredRatingLogs = useMemo(() => {
+    return logItems.filter((log) => {
+      const playerName = displayName(log.player_id).toLowerCase();
+      const matchLabel = String(log.match_id ?? "");
+      const byPlayer = !ratingSearchPlayer || playerName.includes(ratingSearchPlayer.toLowerCase());
+      const byMatch = !ratingSearchMatch || matchLabel.includes(ratingSearchMatch);
+      return byPlayer && byMatch;
+    });
+  }, [logItems, ratingSearchPlayer, ratingSearchMatch, users]);
+  const filteredPositionLogs = useMemo(() => {
+    if (!positionSearch) return positionLogItems;
+    const needle = positionSearch.toLowerCase();
+    return positionLogItems.filter((item) => {
+      const player = displayName(item.player_id).toLowerCase();
+      const source = item.source.toLowerCase();
+      const mid = String(item.match_id);
+      return player.includes(needle) || source.includes(needle) || mid.includes(needle);
+    });
+  }, [positionLogItems, positionSearch, users]);
+  const filteredFeedbackItems = useMemo(() => {
+    if (!feedbackSearch) return feedbackVotesItems;
+    const needle = feedbackSearch.toLowerCase();
+    return feedbackVotesItems.filter((item) => {
+      const voter = nameById(item.tg_id).toLowerCase();
+      const matchLabel = String(item.match_id ?? "");
+      return voter.includes(needle) || matchLabel.includes(needle);
+    });
+  }, [feedbackVotesItems, feedbackSearch, users]);
+  const interactionLogsLatest = useMemo(() => {
+    const map = new Map<string, (typeof interactionLogs)[number]>();
+    for (const log of interactionLogs) {
+      const pairKey =
+        log.kind === "synergy"
+          ? [log.player_a, log.player_b].sort().join("|")
+          : `${log.player_a}|${log.player_b}`;
+      const key = `${log.source}|${log.match_id ?? "none"}|${log.kind}|${log.venue}|${pairKey}`;
+      if (!map.has(key)) {
+        map.set(key, log);
+      }
+    }
+    return Array.from(map.values());
+  }, [interactionLogs]);
   const filteredMatches = useMemo(
     () => matches.filter((m) => matchFilter === "all" || m.status === matchFilter),
     [matches, matchFilter]
@@ -648,10 +791,15 @@ export function Admin() {
       setError(formatApiError(err));
     }
   };
-  const addToTeam = async (tgId: number, team: "A" | "B") => {
+  const addToTeam = async (tgId: number, team: "A" | "B", role: "player" | "organizer" | "spectator" = "player") => {
     if (!selectedMatchId) return;
     try {
-      await adminAddMatchMembers(selectedMatchId, [{ tg_id: tgId, role: "player", can_edit: false }]);
+      await adminAddMatchMembers(selectedMatchId, [{ tg_id: tgId, role, can_edit: false }]);
+      if (isWaitingMatch || role !== "player") {
+        const refreshedWaiting = await getMatch(selectedMatchId);
+        setMatchDetail(refreshedWaiting);
+        return;
+      }
       let refreshed = await getMatch(selectedMatchId);
       const baseVariant =
         refreshed.team_current?.base_variant_no ?? refreshed.team_variants[0]?.variant_no ?? 1;
@@ -667,10 +815,77 @@ export function Admin() {
       setError(formatApiError(err));
     }
   };
+  const matrixValueByIds = useMemo(() => {
+    const map = new Map<string, number>();
+    matrixPlayers.forEach((rowId, rowIndex) => {
+      matrixPlayers.forEach((colId, colIndex) => {
+        map.set(`${rowId}_${colId}`, matrixValues[rowIndex]?.[colIndex] ?? 0);
+      });
+    });
+    return map;
+  }, [matrixPlayers, matrixValues]);
+  const displayMatrixRows = useMemo(() => {
+    const list = [...matrixPlayers];
+    if (matrixSort.axis !== "col" || !matrixSort.playerId || matrixSort.dir === "none") return list;
+    list.sort((a, b) => {
+      const va = matrixValueByIds.get(`${a}_${matrixSort.playerId}`) ?? 0;
+      const vb = matrixValueByIds.get(`${b}_${matrixSort.playerId}`) ?? 0;
+      return matrixSort.dir === "desc" ? vb - va : va - vb;
+    });
+    return list;
+  }, [matrixPlayers, matrixSort, matrixValueByIds]);
+  const displayMatrixCols = useMemo(() => {
+    const list = [...matrixPlayers];
+    if (matrixSort.axis !== "row" || !matrixSort.playerId || matrixSort.dir === "none") return list;
+    list.sort((a, b) => {
+      const va = matrixValueByIds.get(`${matrixSort.playerId}_${a}`) ?? 0;
+      const vb = matrixValueByIds.get(`${matrixSort.playerId}_${b}`) ?? 0;
+      return matrixSort.dir === "desc" ? vb - va : va - vb;
+    });
+    return list;
+  }, [matrixPlayers, matrixSort, matrixValueByIds]);
+  const toggleMatrixSort = (playerId: string, axis: "row" | "col") => {
+    setMatrixSort((prev) => {
+      if (prev.playerId === playerId && prev.axis === axis) {
+        if (prev.dir === "desc") return { playerId, axis, dir: "asc" };
+        if (prev.dir === "asc") return { playerId: null, axis: "none", dir: "none" };
+      }
+      return { playerId, axis, dir: "desc" };
+    });
+  };
+  const matrixSortIcon = (playerId: string, axis: "row" | "col") => {
+    if (matrixSort.playerId !== playerId || matrixSort.axis !== axis || matrixSort.dir === "none") return "";
+    return matrixSort.dir === "desc" ? " ↓" : " ↑";
+  };
+  const saveTeamNames = async () => {
+    if (!selectedMatchId || !matchDetail) return;
+    try {
+      setTeamNamesSaving(true);
+      const baseVariant =
+        matchDetail.team_current?.base_variant_no ?? matchDetail.team_variants[0]?.variant_no ?? 1;
+      const teams = matchDetail.team_current?.current_teams ?? matchDetail.team_variants[0]?.teams ?? { A: [], B: [] };
+      await customTeams(selectedMatchId, {
+        base_variant_no: baseVariant,
+        teams: { A: [...teams.A], B: [...teams.B] },
+        team_name_a: teamNameA.trim() || undefined,
+        team_name_b: teamNameB.trim() || undefined
+      });
+      await refreshMatchDetail();
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setTeamNamesSaving(false);
+    }
+  };
   const removeFromTeams = async (tgId: number) => {
     if (!selectedMatchId) return;
     try {
       await adminRemoveMatchMember(selectedMatchId, tgId);
+      if (isWaitingMatch) {
+        const refreshedWaiting = await getMatch(selectedMatchId);
+        setMatchDetail(refreshedWaiting);
+        return;
+      }
       let refreshed = await getMatch(selectedMatchId);
       const baseVariant =
         refreshed.team_current?.base_variant_no ?? refreshed.team_variants[0]?.variant_no ?? 1;
@@ -1195,7 +1410,7 @@ export function Admin() {
                                   {member.name}
                                 </span>
                                 <button
-                                  onClick={() => removeFromTeams(member.tg_id)}
+                                  onClick={() => setConfirmState({ kind: "removeMember", tgId: member.tg_id, name: member.name })}
                                   className="text-red-500 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
                                   УДАЛИТЬ
@@ -1208,6 +1423,33 @@ export function Admin() {
                           </div>
                         </div>
                       ) : (
+                        <div className="space-y-4">
+                          <div className="bg-[var(--bg-page)] border-2 border-[var(--border-main)] p-4">
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <h3 className="font-black uppercase italic text-lg">ИМЕНА КОМАНД</h3>
+                              <button
+                                onClick={saveTeamNames}
+                                disabled={teamNamesSaving}
+                                className="text-[10px] font-black uppercase border border-[var(--border-main)] px-3 py-1 bg-[var(--bg-contrast)] text-[var(--text-contrast)] disabled:opacity-50"
+                              >
+                                {teamNamesSaving ? "СОХРАНЕНИЕ..." : "СОХРАНИТЬ"}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              <Input
+                                value={teamNameA}
+                                onChange={(e) => setTeamNameA(e.target.value)}
+                                placeholder="Название TEAM A"
+                                className="!mb-0 !py-1.5 !text-xs bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)] font-black uppercase italic"
+                              />
+                              <Input
+                                value={teamNameB}
+                                onChange={(e) => setTeamNameB(e.target.value)}
+                                placeholder="Название TEAM B"
+                                className="!mb-0 !py-1.5 !text-xs bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)] font-black uppercase italic"
+                              />
+                            </div>
+                          </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           <div className="bg-[var(--bg-page)] border-2 border-[var(--border-main)] p-4">
                             <div className="flex justify-between items-center mb-4 border-b border-[var(--border-main)] pb-2">
@@ -1226,7 +1468,7 @@ export function Admin() {
                                     {member.name}
                                   </span>
                                   <button
-                                    onClick={() => removeFromTeams(member.tg_id)}
+                                    onClick={() => setConfirmState({ kind: "removeMember", tgId: member.tg_id, name: member.name })}
                                     className="text-red-500 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity"
                                   >
                                     УДАЛИТЬ
@@ -1255,7 +1497,7 @@ export function Admin() {
                                     {member.name}
                                   </span>
                                   <button
-                                    onClick={() => removeFromTeams(member.tg_id)}
+                                    onClick={() => setConfirmState({ kind: "removeMember", tgId: member.tg_id, name: member.name })}
                                     className="text-red-500 text-[8px] font-black uppercase opacity-0 group-hover:opacity-100 transition-opacity"
                                   >
                                     УДАЛИТЬ
@@ -1267,6 +1509,7 @@ export function Admin() {
                               ) : null}
                             </div>
                           </div>
+                        </div>
                         </div>
                       )}
 
@@ -1388,16 +1631,13 @@ export function Admin() {
                                         ПРАВКА
                                       </button>
                                       <button
-                                        onClick={async () => {
-                                          if (!selectedMatchId) return;
-                                          try {
-                                            await deleteEvent(selectedMatchId, event.id);
-                                            await refreshMatchDetail();
-                                            await maybeRebuildFinishedMatch();
-                                          } catch (err) {
-                                            setError(formatApiError(err));
-                                          }
-                                        }}
+                                        onClick={() =>
+                                          setConfirmState({
+                                            kind: "deleteEvent",
+                                            eventId: event.id,
+                                            label: `${event.event_type === "goal" ? "ГОЛ" : "АВТОГОЛ"}: ${memberNameById(event.scorer_tg_id)}`
+                                          })
+                                        }
                                         className="text-[8px] font-black uppercase text-red-500"
                                       >
                                         X
@@ -1434,6 +1674,17 @@ export function Admin() {
                               className="!mb-0 !py-1.5 !text-xs bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)] font-black uppercase italic tracking-tight outline-none focus:outline-none focus:ring-0 focus:border-[var(--border-main)]"
                             />
                           </div>
+                          <div className="w-full sm:w-48">
+                            <select
+                              value={addRole}
+                              onChange={(e) => setAddRole(e.target.value as "player" | "organizer" | "spectator")}
+                              className="w-full !mb-0 !py-1.5 !text-xs bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)] font-black uppercase italic tracking-tight"
+                            >
+                              <option value="player">ИГРОК</option>
+                              <option value="organizer">ОРГАНИЗАТОР</option>
+                              <option value="spectator">ЗРИТЕЛЬ</option>
+                            </select>
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border-main)] max-h-[400px] overflow-y-auto">
                           {availableUsers.map((user) => (
@@ -1463,18 +1714,36 @@ export function Admin() {
                                 </div>
                               </div>
                               <div className="flex gap-2">
-                                <button
-                                  onClick={() => addToTeam(user.tg_id, "A")}
-                                  className="w-10 h-10 border border-[var(--border-main)] text-[var(--text-main)] text-[10px] font-black hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] italic"
-                                >
-                                  +A
-                                </button>
-                                <button
-                                  onClick={() => addToTeam(user.tg_id, "B")}
-                                  className="w-10 h-10 border border-[var(--bg-contrast)] text-[var(--bg-contrast)] text-[10px] font-black hover:bg-[var(--bg-contrast)] hover:text-[var(--text-contrast)] italic"
-                                >
-                                  +B
-                                </button>
+                                {isWaitingMatch ? (
+                                  <button
+                                    onClick={() => addToTeam(user.tg_id, "A", addRole)}
+                                    className="h-10 px-3 border border-[var(--border-main)] text-[var(--text-main)] text-[10px] font-black hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] italic uppercase"
+                                  >
+                                    + В СПИСОК
+                                  </button>
+                                ) : addRole !== "player" ? (
+                                  <button
+                                    onClick={() => addToTeam(user.tg_id, "A", addRole)}
+                                    className="h-10 px-3 border border-[var(--border-main)] text-[var(--text-main)] text-[10px] font-black hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] italic uppercase"
+                                  >
+                                    + В МАТЧ
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => addToTeam(user.tg_id, "A", addRole)}
+                                      className="w-10 h-10 border border-[var(--border-main)] text-[var(--text-main)] text-[10px] font-black hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] italic"
+                                    >
+                                      +A
+                                    </button>
+                                    <button
+                                      onClick={() => addToTeam(user.tg_id, "B", addRole)}
+                                      className="w-10 h-10 border border-[var(--bg-contrast)] text-[var(--bg-contrast)] text-[10px] font-black hover:bg-[var(--bg-contrast)] hover:text-[var(--text-contrast)] italic"
+                                    >
+                                      +B
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -1629,12 +1898,22 @@ export function Admin() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="text-2xl font-black uppercase italic mb-4 border-b-2 border-[var(--border-main)] pb-2">
-                    {confirmState.kind === "deleteMatch" ? "УДАЛИТЬ МАТЧ?" : "УДАЛИТЬ СЕГМЕНТ?"}
+                    {confirmState.kind === "deleteMatch"
+                      ? "УДАЛИТЬ МАТЧ?"
+                      : confirmState.kind === "deleteSegment"
+                        ? "УДАЛИТЬ СЕГМЕНТ?"
+                        : confirmState.kind === "removeMember"
+                          ? "УДАЛИТЬ ИГРОКА?"
+                          : "УДАЛИТЬ СОБЫТИЕ?"}
                   </div>
                   <div className="text-xs font-black uppercase tracking-wide text-[var(--text-main)]/60">
                     {confirmState.kind === "deleteMatch"
                       ? `Матч #${selectedMatchId ?? "—"} и все связанные данные будут удалены.`
-                      : "Сегмент и все события внутри будут удалены."}
+                      : confirmState.kind === "deleteSegment"
+                        ? "Сегмент и все события внутри будут удалены."
+                        : confirmState.kind === "removeMember"
+                          ? `Игрок ${confirmState.name} будет удален из матча.`
+                          : `Событие «${confirmState.label}» будет удалено.`}
                   </div>
                   <div className="mt-8 flex gap-2">
                     <button
@@ -1652,7 +1931,28 @@ export function Admin() {
                           setConfirmState(null);
                           return;
                         }
-                        if (!selectedMatchId || !confirmState.segmentId) return;
+                        if (confirmState.kind === "removeMember") {
+                          try {
+                            await removeFromTeams(confirmState.tgId);
+                          } finally {
+                            setConfirmState(null);
+                          }
+                          return;
+                        }
+                        if (confirmState.kind === "deleteEvent") {
+                          if (!selectedMatchId) return;
+                          try {
+                            await deleteEvent(selectedMatchId, confirmState.eventId);
+                            await refreshMatchDetail();
+                            await maybeRebuildFinishedMatch();
+                          } catch (err) {
+                            setError(formatApiError(err));
+                          } finally {
+                            setConfirmState(null);
+                          }
+                          return;
+                        }
+                        if (!selectedMatchId || confirmState.kind !== "deleteSegment") return;
                         try {
                           await deleteSegment(selectedMatchId, confirmState.segmentId);
                           await refreshMatchDetail();
@@ -1770,250 +2070,489 @@ export function Admin() {
               </div>
             ) : null}
             {activeTab === "RATING_LOGS" ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-4">
-                  <h1 className="text-3xl font-black uppercase italic tracking-tighter">RATING LOGS</h1>
+              <div className="h-full flex flex-col">
+                <div className="mb-6 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
+                  <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">RATING LOGS</h1>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setRebuildLoading(true);
+                      try {
+                        await adminRebuildRatingLogs(1);
+                        const result = await adminGetRatingLogs({});
+                        setLogItems(result.logs || []);
+                      } catch (err) {
+                        setError(formatApiError(err));
+                      } finally {
+                        setRebuildLoading(false);
+                      }
+                    }}
+                    className="border-2 border-[var(--border-main)] bg-[var(--bg-contrast)] px-4 py-2 text-[11px] font-black uppercase italic text-[var(--text-contrast)]"
+                  >
+                    {rebuildLoading ? "ПЕРЕСЧЕТ..." : "REBUILD ALL"}
+                  </button>
                 </div>
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input value={logMatchId} onChange={(e) => setLogMatchId(e.target.value)} placeholder="Матч ID" />
-                    <Input value={logPlayerId} onChange={(e) => setLogPlayerId(e.target.value)} placeholder="Игрок ID" />
-                  </div>
-                  <div className="max-h-32 space-y-2 overflow-auto rounded-xl border-2 border-[var(--border-main)]/40 p-2"> {users.map((user) => (
-                      <button
-                        key={user.tg_id}
-                        type="button"
-                        onClick={() => setLogPlayerId(String(user.tg_id))}
-                        className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-sm ${
-                          logPlayerId === String(user.tg_id)
-                            ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
-                            : "hover:bg-[var(--bg-surface)]"
-                        }`}
+                <div className="mb-5 grid grid-cols-1 gap-2 bg-[var(--bg-surface)] p-2 border border-[var(--border-main)]/50 sm:grid-cols-3">
+                  <input
+                    placeholder="ПОИСК ПО ИГРОКУ..."
+                    value={ratingSearchPlayer}
+                    onChange={(e) => setRatingSearchPlayer(e.target.value)}
+                    className="w-full bg-[var(--bg-page)] border border-[var(--border-main)] text-[var(--text-main)] px-3 py-2 text-[11px] font-black uppercase italic outline-none focus:border-[var(--text-accent)]"
+                  />
+                  <input
+                    placeholder="ПОИСК ПО МАТЧУ..."
+                    value={ratingSearchMatch}
+                    onChange={(e) => setRatingSearchMatch(e.target.value)}
+                    className="w-full bg-[var(--bg-page)] border border-[var(--border-main)] text-[var(--text-main)] px-3 py-2 text-[11px] font-black uppercase italic outline-none focus:border-[var(--text-accent)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setLogsLoading(true);
+                      try {
+                        const result = await adminGetRatingLogs({});
+                        setLogItems(result.logs || []);
+                      } catch (err) {
+                        setError(formatApiError(err));
+                      } finally {
+                        setLogsLoading(false);
+                      }
+                    }}
+                    className="w-full border-2 border-[var(--border-main)] bg-[var(--bg-page)] text-[var(--text-main)] px-3 py-2 text-[11px] font-black uppercase italic"
+                  >
+                    {logsLoading ? "ЗАГРУЖАЮ..." : "ОБНОВИТЬ"}
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto space-y-1 pb-20">
+                  {filteredRatingLogs.length === 0 ? (
+                    <div className="py-20 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] uppercase font-black italic opacity-60">
+                      DATABASE EMPTY
+                    </div>
+                  ) : (
+                    filteredRatingLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="bg-[var(--bg-surface)] border border-[var(--border-main)]/60 p-3 hover:border-[var(--border-main)] transition-colors"
                       >
-                        <span>{user.custom_name || user.tg_name}</span>
-                        <span className="text-xs opacity-60"> {user.tg_id}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={async () => {
-                        setLogsLoading(true);
-                        try {
-                          const result = await adminGetRatingLogs({
-                            player_id: logPlayerId ? logPlayerId : undefined,
-                            match_id: logMatchId ? Number(logMatchId) : undefined
-                          });
-                          setLogItems(result.logs || []);
-                        } catch (err) {
-                          setError(formatApiError(err));
-                        } finally {
-                          setLogsLoading(false);
-                        }
-                      }}
-                    >
-                      {logsLoading ? "Загружаю..." : "Показать"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        setRebuildLoading(true);
-                        try {
-                          await adminRebuildRatingLogs(1);
-                          const result = await adminGetRatingLogs({
-                            player_id: logPlayerId ? logPlayerId : undefined,
-                            match_id: logMatchId ? Number(logMatchId) : undefined
-                          });
-                          setLogItems(result.logs || []);
-                        } catch (err) {
-                          setError(formatApiError(err));
-                        } finally {
-                          setRebuildLoading(false);
-                        }
-                      }}
-                    >
-                      {rebuildLoading ? "Пересчитываю..." : "Пересчитать логи"}
-                    </Button>
-                  </div>
-                  <div className="max-h-[420px] space-y-2 overflow-auto"> {logItems.length === 0 ? (
-                      <div className="text-xs opacity-60">Логов нет</div>
-                    ) : (
-                      logItems.map((log) => (
-                        <div key={log.id} className="border-2 border-[var(--border-main)]/40 rounded-2xl p-3 bg-[var(--bg-surface)]">
-                          <div className="flex items-center justify-between">
-                            <span className="font-black">Матч #{log.match_id}</span>
-                            <span className="text-xs opacity-60"> {new Date(log.created_at).toLocaleString("ru-RU")}</span>
+                        <div className="mb-1 flex items-center justify-between">
+                          <div className="text-xl font-black uppercase italic tracking-tighter">Матч #{log.match_id}</div>
+                          <div className="text-[10px] font-mono opacity-60">
+                            {new Date(log.created_at).toLocaleString("ru-RU")}
                           </div>
-                          <div className="text-xs opacity-60"> {displayName(log.player_id)} | {venueLabel(log.venue)}
-                          </div>
-                          <div className="text-sm">
-                            DELTA {log.delta.toFixed(2)} | {log.pre_global.toFixed(2)} {" > "} {log.post_global.toFixed(2)}
-                          </div>
-                          <div className="text-xs opacity-60">Голы: {log.goals}, Ассисты: {log.assists}</div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                        <div className="mb-2 text-[11px] text-[var(--text-main)]/70 uppercase italic">
+                          {displayName(log.player_id)} | {venueLabel(log.venue)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-2xl font-black italic leading-none ${
+                              log.delta >= 0 ? "text-green-500" : "text-red-500"
+                            }`}
+                          >
+                            Δ {log.delta.toFixed(2)}
+                          </span>
+                          <span className="text-[var(--text-main)]/40 text-lg font-black">|</span>
+                          <span className="text-lg font-mono tracking-tighter text-[var(--text-main)]/80">
+                            {log.pre_global.toFixed(2)} <span className="text-[var(--text-main)]/40">→</span>{" "}
+                            {log.post_global.toFixed(2)}
+                          </span>
+                        </div>
+                        {log.details ? (
+                          <div className="mt-2 text-[10px] text-[var(--text-main)]/65 font-black uppercase tracking-tight">
+                            Победа/поражение: {(log.details.result_delta ?? 0).toFixed(2)} | Голы:{" "}
+                            {(log.details.goal_delta ?? 0).toFixed(2)} | Ассисты: {(log.details.assist_delta ?? 0).toFixed(2)}{" "}
+                            | Фидбек: {(log.details.quick_delta ?? 0).toFixed(2)} (MVP {(log.details.mvp_delta ?? 0).toFixed(2)}
+                            , Сравнения {(log.details.pairwise_delta ?? 0).toFixed(2)}, Fan {(log.details.fan_delta ?? 0).toFixed(2)})
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             ) : null}
             {activeTab === "FEEDBACK" ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-4">
-                  <h1 className="text-3xl font-black uppercase italic tracking-tighter">FEEDBACK LOGS</h1>
+              <div className="h-full flex flex-col">
+                <div className="mb-6 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
+                  <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">FEEDBACK LOGS</h1>
                 </div>
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <Input value={feedbackMatchId} onChange={(e) => setFeedbackMatchId(e.target.value)} placeholder="Матч ID (опционально)" />
-                    <Button
-                      onClick={async () => {
-                        setFeedbackVotesLoading(true);
-                        try {
-                          const result = await adminGetFeedbackVotes({
-                            match_id: feedbackMatchId ? Number(feedbackMatchId) : undefined
-                          });
-                          setFeedbackVotesItems(result.items || []);
-                        } catch (err) {
-                          setError(formatApiError(err));
-                        } finally {
-                          setFeedbackVotesLoading(false);
-                        }
-                      }}
-                    >
-                      {feedbackVotesLoading ? "Загружаю..." : "Показать"}
-                    </Button>
-                  </div>
-                  <div className="max-h-[420px] space-y-2 overflow-auto"> {feedbackVotesItems.length === 0 ? (
-                      <div className="text-xs opacity-60">Нет голосов</div>
-                    ) : (
-                      feedbackVotesItems.map((item, index) => {
-                        const answers = (item.answers_json || {}) as Record<string, unknown>;
-                        const worst = answers.worst;
-                        return (
-                          <div key={`${item.match_id}-${item.tg_id}-${index}`} className="border-2 border-[var(--border-main)]/40 rounded-2xl p-3 bg-[var(--bg-surface)]">
-                            <div className="flex items-center justify-between">
-                              <span className="font-black">Матч #{item.match_id}</span>
-                              <span className="text-xs opacity-60"> {nameById(item.tg_id)}</span>
-                            </div>
-                            <div className="text-xs opacity-60">Лучший {'>'} {nameById(answers.best)}</div>
-                            <div className="text-xs opacity-60">MVP {'>'} {nameById(item.mvp_vote_tg_id)}</div>
-                            <div className="text-xs opacity-60">Худший {'>'} {nameById(worst)}</div>
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-[1fr_200px_auto] gap-2">
+                  <input
+                    placeholder="SEARCH VOTER / MATCH ID..."
+                    value={feedbackSearch}
+                    onChange={(e) => setFeedbackSearch(e.target.value)}
+                    className="w-full bg-[var(--bg-page)] border-2 border-[var(--border-main)] text-[var(--text-main)] px-4 py-3 text-[13px] font-black uppercase italic outline-none focus:border-[var(--text-accent)]"
+                  />
+                  <Input
+                    value={feedbackMatchId}
+                    onChange={(e) => setFeedbackMatchId(e.target.value)}
+                    placeholder="MATCH ID"
+                    className={modalInputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setFeedbackVotesLoading(true);
+                      try {
+                        const result = await adminGetFeedbackVotes({
+                          match_id: feedbackMatchId ? Number(feedbackMatchId) : undefined
+                        });
+                        setFeedbackVotesItems(result.items || []);
+                      } catch (err) {
+                        setError(formatApiError(err));
+                      } finally {
+                        setFeedbackVotesLoading(false);
+                      }
+                    }}
+                    className="border-2 border-[var(--border-main)] bg-[var(--bg-page)] px-4 py-3 text-[12px] font-black uppercase italic"
+                  >
+                    {feedbackVotesLoading ? "ЗАГРУЖАЮ..." : "REFRESH"}
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto space-y-4 pb-40 pr-1">
+                  {filteredFeedbackItems.map((item, index) => {
+                    const answers = (item.answers_json || {}) as Record<string, unknown>;
+                    const worst = answers.worst;
+                    return (
+                      <div
+                        key={`${item.match_id}-${item.tg_id}-${index}`}
+                        className="bg-[var(--bg-page)] border-2 border-[var(--border-main)] hover:border-[var(--text-accent)]/50 transition-all flex flex-col overflow-hidden"
+                      >
+                        <div className="bg-[var(--bg-surface)] p-3 flex justify-between items-center border-b-2 border-[var(--border-main)]">
+                          <div className="flex items-center gap-4 min-w-0">
+                            <span className="text-[var(--text-main)] text-2xl font-black uppercase italic leading-none">
+                              #{item.match_id}
+                            </span>
+                            <span className="text-[var(--text-accent)] text-[12px] font-black uppercase leading-none truncate tracking-tight">
+                              {nameById(item.tg_id)}
+                            </span>
                           </div>
-                        );
-                      })
-                    )}
-                  </div>
+                          <span className="text-[10px] font-mono opacity-60 uppercase italic leading-none shrink-0">
+                            vote
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 divide-x-2 divide-[var(--border-main)] border-b-2 border-[var(--border-main)]">
+                          <div className="p-4 bg-[var(--bg-surface)]/20 min-w-0">
+                            <div className="text-[10px] opacity-60 font-black mb-1 uppercase tracking-widest">MVP</div>
+                            <div className="text-[28px] font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
+                              {nameById(item.mvp_vote_tg_id)}
+                            </div>
+                          </div>
+                          <div className="p-4 bg-[var(--bg-page)] min-w-0">
+                            <div className="text-[10px] opacity-60 font-black mb-1 uppercase tracking-widest">WORST</div>
+                            <div className="text-[28px] text-[var(--text-main)]/60 font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
+                              {nameById(worst)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-[var(--bg-surface)]/40 p-3 flex items-baseline gap-4">
+                          <span className="text-[10px] opacity-60 font-black uppercase tracking-[0.2em] shrink-0">
+                            BEST
+                          </span>
+                          <span className="text-[20px] text-[var(--text-accent)] font-black uppercase italic leading-none truncate">
+                            {nameById(answers.best)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredFeedbackItems.length === 0 ? (
+                    <div className="py-20 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] uppercase font-black italic opacity-60">
+                      DATABASE EMPTY
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
             {activeTab === "POSITION_LOGS" ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-4">
-                  <h1 className="text-3xl font-black uppercase italic tracking-tighter">POSITION LOGS</h1>
+              <div className="h-full flex flex-col">
+                <div className="mb-6 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
+                  <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">POSITION LOGS</h1>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setPositionLogsLoading(true);
+                      try {
+                        const result = await adminGetPositionLogs({ limit: 500 });
+                        setPositionLogItems(result.logs || []);
+                      } catch (err) {
+                        setError(formatApiError(err));
+                      } finally {
+                        setPositionLogsLoading(false);
+                      }
+                    }}
+                    className="border-2 border-[var(--border-main)] bg-[var(--bg-page)] px-4 py-2 text-[11px] font-black uppercase italic"
+                  >
+                    ОБНОВИТЬ
+                  </button>
                 </div>
-                <div className="border-2 border-[var(--border-main)]/40 rounded-2xl overflow-auto">
-                  <table className="w-full min-w-[480px] text-left text-xs">
-                    <thead>
-                      <tr className="text-xs uppercase tracking-[0.12em] opacity-60">
-                        <th className="py-2 pr-3">Игрок</th>
-                        <th className="py-2 pr-3">Атака</th>
-                        <th className="py-2 pr-3">Защита</th>
-                        <th className="py-2 pr-3">Ближе к</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                {sortedPlayers.map((player) => {
-                        const roles = player.role_tendencies || {};
-                        const attack =
-                          (roles.attacker ?? 0) +
-                          (roles.offball ?? 0) +
-                          (roles.ball_retention ?? 0) +
-                          (roles.decision ?? 0) +
-                          (roles.attack ?? 0);
-                        const defense =
-                          (roles.defender ?? 0) +
-                          (roles.discipline ?? 0) +
-                          (roles.defense ?? 0);
-                        const best =
-                          attack === 0 && defense === 0
-                            ? { key: "", value: 0 }
-                            : attack >= defense
-                              ? { key: "attack", value: attack }
-                              : { key: "defense", value: defense };
-                        return (
-                          <tr key={player.player_id} className="border-t border-[var(--border-main)]/30">
-                            <td className="py-2 pr-3">
-                              <div className="font-medium"> {displayName(player.player_id)}</div>
-                              <div className="text-[10px] opacity-60">ID: {player.player_id}</div>
-                            </td>
-                            <td className="py-2 pr-3"> {attack.toFixed(2)}</td>
-                            <td className="py-2 pr-3"> {defense.toFixed(2)}</td>
-                            <td className="py-2 pr-3"> {roleLabel(best.key)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="mb-4">
+                  <input
+                    placeholder="ПОИСК: ИГРОК / МАТЧ / SOURCE..."
+                    value={positionSearch}
+                    onChange={(e) => setPositionSearch(e.target.value)}
+                    className="w-full bg-[var(--bg-page)] border border-[var(--border-main)] text-[var(--text-main)] px-3 py-2 text-[11px] font-black uppercase italic outline-none focus:border-[var(--text-accent)]"
+                  />
+                </div>
+                <div className="flex-1 overflow-auto space-y-1 pb-20">
+                  {positionLogsLoading ? (
+                    <div className="py-12 text-center text-[10px] uppercase font-black italic opacity-60">LOADING...</div>
+                  ) : null}
+                  {filteredPositionLogs.map((log) => {
+                    return (
+                      <div
+                        key={`${log.id}-${log.player_id}`}
+                        className="bg-[var(--bg-surface)] border border-[var(--border-main)]/60 p-3 hover:border-[var(--border-main)] transition-all flex items-center justify-between"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-3">
+                            <span className="text-sm font-black uppercase italic truncate">{displayName(log.player_id)}</span>
+                            <span className="text-[9px] font-black px-1.5 py-0.5 uppercase tracking-tighter bg-[var(--bg-page)] border border-[var(--border-main)]/60">
+                              {positionSourceLabel(log.source)}
+                            </span>
+                            <span className="text-[10px] opacity-60 font-black uppercase">MATCH #{log.match_id}</span>
+                            {feedbackAuthorFromSource(log.source) ? (
+                              <span className="text-[10px] opacity-60 font-black uppercase">
+                                AUTHOR: {feedbackAuthorFromSource(log.source)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[9px] opacity-50 font-black">ATTACKER</span>
+                              <span className="text-sm font-mono tracking-tighter">
+                                {log.old_attacker.toFixed(2)} → {log.new_attacker.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[9px] opacity-50 font-black">DEFENDER</span>
+                              <span className="text-sm font-mono tracking-tighter">
+                                {log.old_defender.toFixed(2)} → {log.new_defender.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4 text-right">
+                          <div className={`text-sm font-black italic ${log.delta_attacker >= 0 ? "text-green-500" : "text-red-500"}`}>
+                            A {log.delta_attacker > 0 ? "+" : ""}
+                            {log.delta_attacker.toFixed(2)}
+                          </div>
+                          <div className={`text-sm font-black italic ${log.delta_defender >= 0 ? "text-green-500" : "text-red-500"}`}>
+                            D {log.delta_defender > 0 ? "+" : ""}
+                            {log.delta_defender.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!positionLogsLoading && filteredPositionLogs.length === 0 ? (
+                    <div className="py-20 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] uppercase font-black italic opacity-60">
+                      DATABASE EMPTY
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
             {activeTab === "INTERACTIONS" ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-4">
-                  <h1 className="text-3xl font-black uppercase italic tracking-tighter">INTERACTIONS</h1>
+              <div className="flex flex-col h-full w-full">
+                <div className="mb-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
+                    <h1 className="text-4xl font-black uppercase tracking-tighter italic leading-none">
+                      ANALYTICS: <span className="text-[var(--text-accent)]">{matrixKind.toUpperCase()}</span>
+                    </h1>
+                    <div className="flex border-2 border-[var(--border-main)] bg-[var(--bg-page)] shrink-0">
+                      {(["synergy", "domination"] as const).map((kind) => (
+                        <button
+                          key={kind}
+                          onClick={() => {
+                            setMatrixKind(kind);
+                            setMatrixSort({ playerId: null, axis: "none", dir: "none" });
+                            loadMatrix(kind, matrixVenue);
+                            loadInteractionLogs(kind, matrixVenue, interactionLogPlayer);
+                          }}
+                          className={`px-5 py-2 text-[12px] font-black uppercase italic transition-all ${
+                            matrixKind === kind
+                              ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
+                              : "text-[var(--text-main)]/60 hover:text-[var(--text-main)]"
+                          }`}
+                        >
+                          {kind === "synergy" ? "СЫГРАННОСТЬ" : "ДОМИНАЦИЯ"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[{ key: "__global__", label: "Глобальная" }, { key: venueA, label: venueA }, { key: venueB, label: venueB }].map((v) => (
+                      <button
+                        key={v.key}
+                        onClick={() => {
+                          setMatrixVenue(v.key);
+                          setMatrixSort({ playerId: null, axis: "none", dir: "none" });
+                          loadMatrix(matrixKind, v.key);
+                          loadInteractionLogs(matrixKind, v.key, interactionLogPlayer);
+                        }}
+                        className={`px-5 py-2 border-2 text-[11px] font-black uppercase italic transition-all ${
+                          matrixVenue === v.key
+                            ? "bg-[var(--bg-contrast)] border-[var(--bg-contrast)] text-[var(--text-contrast)]"
+                            : "bg-[var(--bg-page)] border-[var(--border-main)] text-[var(--text-main)]/60 hover:text-[var(--text-main)]"
+                        }`}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setMatrixKind("synergy");
-                      setMatrixVenue("__global__");
-                      setMatrixOpen(true);
-                      loadMatrix("synergy", "__global__");
-                      loadInteractionLogs("synergy", "__global__");
-                    }}
-                  >
-                    Синергия
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setMatrixKind("domination");
-                      setMatrixVenue("__global__");
-                      setMatrixOpen(true);
-                      loadMatrix("domination", "__global__");
-                      loadInteractionLogs("domination", "__global__");
-                    }}
-                  >
-                    Доминация
-                  </Button>
+                <div className="bg-[var(--bg-page)] border border-[var(--border-main)] relative flex flex-col flex-1 min-h-0">
+                  <div className="bg-[var(--bg-surface)] p-2 text-[8px] opacity-70 uppercase font-black tracking-widest flex justify-between shrink-0">
+                    <div className="flex gap-4">
+                      <span>{matrixKind.toUpperCase()} MATRIX</span>
+                      <span className="italic">КЛИК ПО ИМЕНИ = СОРТИРОВКА</span>
+                    </div>
+                    <span>A = СТРОКА, B = СТОЛБЕЦ</span>
+                  </div>
+                  <div className="overflow-auto flex-1 max-h-[62vh]">
+                    {matrixLoading ? (
+                      <div className="p-3 text-sm opacity-60">Загрузка...</div>
+                    ) : matrixPlayers.length === 0 ? (
+                      <div className="p-3 text-sm opacity-60">Нет данных</div>
+                    ) : (
+                      <table className="border-separate border-spacing-0 table-auto min-w-max">
+                        <thead>
+                          <tr className="bg-[var(--bg-surface)]">
+                            <th className="sticky top-0 left-0 z-50 bg-[var(--bg-surface)] border-b border-r border-[var(--border-main)] p-3 w-32 min-w-[128px]">
+                              <div className="text-[10px] opacity-60 font-black uppercase text-left italic">A \ B</div>
+                            </th>
+                            {displayMatrixCols.map((player) => (
+                              <th
+                                key={player}
+                                onClick={() => toggleMatrixSort(player, "col")}
+                                className={`sticky top-0 z-40 border-b border-[var(--border-main)] p-3 text-[10px] font-black uppercase italic text-center min-w-[100px] cursor-pointer transition-colors ${
+                                  matrixSort.playerId === player && matrixSort.axis === "col"
+                                    ? "bg-[var(--bg-surface)] text-[var(--text-accent)]"
+                                    : "bg-[var(--bg-surface)] text-[var(--text-main)]/60 hover:text-[var(--text-main)]"
+                                }`}
+                              >
+                                <div className="flex items-center justify-center">
+                                  {displayName(player)}
+                                  <span className="text-[var(--text-accent)]">{matrixSortIcon(player, "col")}</span>
+                                </div>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayMatrixRows.map((rowPlayer) => (
+                            <tr key={rowPlayer} className="hover:bg-[var(--bg-surface)]/30">
+                              <td
+                                onClick={() => toggleMatrixSort(rowPlayer, "row")}
+                                className={`sticky left-0 z-30 bg-[var(--bg-surface)] border-b border-r border-[var(--border-main)] p-3 text-[11px] font-black uppercase italic cursor-pointer transition-colors ${
+                                  matrixSort.playerId === rowPlayer && matrixSort.axis === "row"
+                                    ? "text-[var(--text-accent)]"
+                                    : "hover:text-[var(--text-accent)]"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  {displayName(rowPlayer)}
+                                  <span className="text-[var(--text-accent)]">{matrixSortIcon(rowPlayer, "row")}</span>
+                                </div>
+                              </td>
+                              {displayMatrixCols.map((colPlayer) => {
+                                const isSelf = rowPlayer === colPlayer;
+                                const val = matrixValueByIds.get(`${rowPlayer}_${colPlayer}`) ?? 0;
+                                let textColor = "text-[var(--text-main)]/50";
+                                let bgColor = "";
+                                if (!isSelf) {
+                                  if (val > 0) textColor = "text-green-500 font-bold";
+                                  if (val < 0) textColor = "text-red-500 font-bold";
+                                  if (Math.abs(val) > 1.0) bgColor = val > 0 ? "bg-green-500/10" : "bg-red-500/10";
+                                  if (
+                                    (matrixSort.axis === "col" && matrixSort.playerId === colPlayer) ||
+                                    (matrixSort.axis === "row" && matrixSort.playerId === rowPlayer)
+                                  ) {
+                                    bgColor = val > 0 ? "bg-green-500/20" : val < 0 ? "bg-red-500/20" : "bg-white/5";
+                                  }
+                                }
+                                return (
+                                  <td
+                                    key={`${rowPlayer}-${colPlayer}`}
+                                    className={`border-b border-[var(--border-main)] p-3 text-center font-mono text-[11px] ${bgColor} ${textColor}`}
+                                  >
+                                    {isSelf ? "—" : val === 0 ? "0.00" : `${val > 0 ? "+" : ""}${val.toFixed(2)}`}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={interactionLogPlayer}
-                    onChange={(e) => setInteractionLogPlayer(e.target.value)}
-                    placeholder="Игрок ID"
-                  />
-                  <Button onClick={async () => loadInteractionLogs(matrixKind, matrixVenue, interactionLogPlayer)}>
-                    Показать
-                  </Button>
-                </div>
-                <div className="max-h-[360px] space-y-2 overflow-auto"> {interactionLogs.length === 0 ? (
-                    <div className="text-xs opacity-60">Логов нет</div>
-                  ) : (
-                    interactionLogs.map((log) => (
-                      <div key={log.id} className="border-2 border-[var(--border-main)]/40 rounded-2xl p-3 bg-[var(--bg-surface)]">
-                        <div className="flex items-center justify-between">
-                          <span className="font-black"> {log.kind.toUpperCase()}</span>
-                          <span className="text-xs opacity-60"> {new Date(log.created_at).toLocaleString("ru-RU")}</span>
+                <div className="mt-8 shrink-0 pb-20">
+                  <div className="flex justify-between items-center mb-4 border-b border-[var(--border-main)] pb-2 gap-2">
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">
+                      ЛОГИ: {matrixKind.toUpperCase()}
+                    </h2>
+                    <div className="flex gap-2">
+                      <input
+                        placeholder="ПОИСК ПО ИГРОКУ..."
+                        value={interactionLogPlayer}
+                        onChange={(e) => setInteractionLogPlayer(e.target.value)}
+                        className="bg-[var(--bg-surface)] border border-[var(--border-main)] px-3 py-1 text-[10px] text-[var(--text-main)] outline-none focus:border-[var(--text-accent)] uppercase italic w-48"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => loadInteractionLogs(matrixKind, matrixVenue, interactionLogPlayer)}
+                        className="px-3 py-1 text-[10px] font-black uppercase border border-[var(--border-main)] bg-[var(--bg-page)]"
+                      >
+                        Обновить
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {interactionLogsLatest.map((log) => (
+                      <div
+                        key={log.id}
+                        className="bg-[var(--bg-surface)] border border-[var(--border-main)] p-3 hover:border-[var(--border-main)] transition-colors"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="text-[12px] font-black uppercase italic flex items-center gap-2">
+                            <span>{displayName(log.player_a)}</span>
+                            <span className="text-[8px] opacity-60 font-black">
+                              {matrixKind === "synergy" ? "↔" : "vs"}
+                            </span>
+                            <span className="text-[var(--text-accent)]">{displayName(log.player_b)}</span>
+                          </div>
+                          <div className="text-[8px] opacity-60 font-mono">
+                            {new Date(log.created_at).toLocaleString("ru-RU")}
+                          </div>
                         </div>
-                        <div className="text-xs opacity-60"> {displayName(log.player_a)} vs {displayName(log.player_b)} • {venueLabel(log.venue)}
+                        <div className="flex items-center gap-3">
+                          <span className="opacity-60 font-mono text-[10px]">{log.value_before.toFixed(2)}</span>
+                          <span className="text-[var(--text-accent)] text-[10px]">→</span>
+                          <span
+                            className={`font-mono text-[11px] font-bold ${
+                              log.value_after >= log.value_before ? "text-green-500" : "text-red-500"
+                            }`}
+                          >
+                            {log.value_after.toFixed(2)}
+                          </span>
                         </div>
-                        <div className="text-sm"> {log.value_before.toFixed(2)} {'>'} {log.value_after.toFixed(2)}
+                        <div className="mt-2 text-[9px] opacity-60 uppercase italic truncate">
+                          {venueLabel(log.venue)} | {sourceLabel(log.source)}
+                        </div>
+                        <div className="mt-1 text-[9px] opacity-60 uppercase italic">
+                          Матч: {log.match_id ?? "—"} | Log: {log.id}
+                          {feedbackAuthorFromSource(log.source) ? ` | Автор: ${feedbackAuthorFromSource(log.source)}` : ""}
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                    {interactionLogsLatest.length === 0 ? (
+                      <div className="col-span-full py-8 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] opacity-60 uppercase italic font-black">
+                        ЛОГИ ПУСТЫ
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -2581,6 +3120,7 @@ export function Admin() {
                     variant={matrixVenue === item.key ? "default" : "outline"}
                     onClick={() => {
                       setMatrixVenue(item.key);
+                      setMatrixSort({ playerId: null, axis: "none", dir: "none" });
                       loadMatrix(matrixKind, item.key);
                       loadInteractionLogs(matrixKind, item.key, interactionLogPlayer);
                     }}
@@ -2599,24 +3139,36 @@ export function Admin() {
                     <thead>
                       <tr>
                         <th className="sticky left-0 bg-[var(--bg-surface)]/90 px-2 py-2 text-left">Игрок</th>
-                        {matrixPlayers.map((player) => (
-                          <th key={player} className="px-2 py-2 text-left">
+                        {displayMatrixCols.map((player) => (
+                          <th
+                            key={player}
+                            className={`px-2 py-2 text-left cursor-pointer ${matrixSort.playerId === player && matrixSort.axis === "col" ? "bg-[var(--bg-surface)]/70" : ""}`}
+                            onClick={() => toggleMatrixSort(player, "col")}
+                          >
                             {displayName(player)}
+                            {matrixSortIcon(player, "col")}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {matrixPlayers.map((rowPlayer, rowIndex) => (
+                      {displayMatrixRows.map((rowPlayer) => (
                         <tr key={rowPlayer} className="border-t border-[var(--border-main)]/60">
-                          <td className="sticky left-0 bg-[var(--bg-surface)]/90 px-2 py-2 font-medium">
+                          <td
+                            className={`sticky left-0 bg-[var(--bg-surface)]/90 px-2 py-2 font-medium cursor-pointer ${matrixSort.playerId === rowPlayer && matrixSort.axis === "row" ? "bg-[var(--bg-surface)]" : ""}`}
+                            onClick={() => toggleMatrixSort(rowPlayer, "row")}
+                          >
                             {displayName(rowPlayer)}
+                            {matrixSortIcon(rowPlayer, "row")}
                           </td>
-                          {matrixPlayers.map((colPlayer, colIndex) => {
-                            const value = matrixValues[rowIndex]?.[colIndex] ?? 0;
+                          {displayMatrixCols.map((colPlayer) => {
+                            const value = matrixValueByIds.get(`${rowPlayer}_${colPlayer}`) ?? 0;
                             const isDiagonal = rowPlayer === colPlayer;
+                            const isHighlighted =
+                              (matrixSort.axis === "col" && matrixSort.playerId === colPlayer) ||
+                              (matrixSort.axis === "row" && matrixSort.playerId === rowPlayer);
                             return (
-                              <td key={`${rowPlayer}-${colPlayer}`} className="px-2 py-1">
+                              <td key={`${rowPlayer}-${colPlayer}`} className={`px-2 py-1 ${isHighlighted ? "bg-[var(--bg-surface)]/40" : ""}`}>
                                 <button
                                   type="button"
                                   disabled={isDiagonal || matrixVenue === "all"}
@@ -2712,10 +3264,10 @@ export function Admin() {
                   </Button>
                 </div>
                 <div className="max-h-40 space-y-2 overflow-auto">
-                  {interactionLogs.length === 0 ? (
+                  {interactionLogsLatest.length === 0 ? (
                     <div className="text-xs text-[var(--text-main)]/60">Логов нет</div>
                   ) : (
-                    interactionLogs.map((log) => (
+                    interactionLogsLatest.map((log) => (
                       <Card key={log.id}>
                         <CardContent className="space-y-1 text-xs">
                           <div className="flex items-center justify-between">
@@ -2729,6 +3281,11 @@ export function Admin() {
                           <div className="text-[var(--text-main)]/60">
                             {venueLabel(log.venue)} | {log.kind} | {sourceLabel(log.source)}
                           </div>
+                          {feedbackAuthorFromSource(log.source) ? (
+                            <div className="text-[var(--text-main)]/60">
+                              Автор фидбека: {feedbackAuthorFromSource(log.source)}
+                            </div>
+                          ) : null}
                           {log.match_id ? (
                             <div className="text-[var(--text-main)]/60">Матч #{log.match_id}</div>
                           ) : null}
