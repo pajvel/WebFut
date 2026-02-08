@@ -1,0 +1,6 @@
+
+{
+  "name": "WebFut - Match Finished",
+  "description": "Post-match screen for the WebFut application with result summaries, events, and MVP voting.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>WEBFUT Profile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              inter: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              background: 'var(--bg-page)',
+              surface: 'var(--bg-surface)',
+              surfaceHighlight: 'var(--bg-surface-highlight)',
+              border: 'var(--border-color)',
+              borderLight: 'var(--color-primary)',
+              white: 'var(--color-primary)', // Main Text Color
+              black: 'var(--color-inverse)', // Contrast Text on Brand
+              brand: 'var(--color-accent)', // The Accent Color
+              zinc: {
+                900: 'var(--zinc-900)',
+                800: 'var(--zinc-800)',
+                700: 'var(--zinc-700)',
+                600: 'var(--zinc-600)',
+                500: 'var(--zinc-500)',
+                400: 'var(--zinc-400)',
+                100: 'var(--zinc-100)',
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      :root {
+        /* Default Theme (Juve/Dark equivalent) */
+        --bg-page: #050505;
+        --bg-surface: #121212;
+        --bg-surface-highlight: #1E1E1E;
+        --border-color: #333333;
+        --color-primary: #FFFFFF;
+        --color-inverse: #000000;
+        --color-accent: #FFFFFF;
+        
+        /* Zinc Shades for Dark Mode */
+        --zinc-900: #18181b;
+        --zinc-800: #27272a;
+        --zinc-700: #3f3f46;
+        --zinc-600: #52525b;
+        --zinc-500: #71717a;
+        --zinc-400: #a1a1aa;
+        --zinc-100: #f4f4f5;
+      }
+
+      body {
+        background-color: var(--bg-page);
+        color: var(--color-primary);
+        -webkit-font-smoothing: antialiased;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      /* Custom Scrollbar hide */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

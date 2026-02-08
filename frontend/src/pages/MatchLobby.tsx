@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import {
   generateTeams,
@@ -18,6 +18,7 @@ import { StatusCard } from "../components/StatusCard";
 import { resolveMediaUrl } from "../lib/media";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useMatText } from "../lib/mode18";
+import { formatVenueLabel } from "../lib/venue";
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -306,7 +307,7 @@ export function MatchLobby() {
         <div className="flex items-center justify-between px-1">
           <div className="flex flex-col">
             <h2 className="font-black italic text-[var(--text-main)] uppercase text-xl leading-none tracking-tighter">
-              {data.match.venue}
+              {formatVenueLabel(data.match.venue)}
             </h2>
           </div>
         </div>
@@ -318,7 +319,11 @@ export function MatchLobby() {
             </div>
             <div className="space-y-1.5">
               {teamAPlayers.length
-                ? teamAPlayers.map((member) => <PlayerCard key={member.tg_id} player={member} size="lg" showRating={false} />)
+                ? teamAPlayers.map((member) => (
+                    <Link key={member.tg_id} to={matchId ? `/matches/${matchId}/players/${member.tg_id}` : "#"}>
+                      <PlayerCard player={member} size="lg" showRating={false} />
+                    </Link>
+                  ))
                 : [0, 1, 2].map((i) => (
                     <div
                       key={`empty-a-${i}`}
@@ -336,7 +341,11 @@ export function MatchLobby() {
             </div>
             <div className="space-y-1.5">
               {teamBPlayers.length
-                ? teamBPlayers.map((member) => <PlayerCard key={member.tg_id} player={member} size="lg" showRating={false} />)
+                ? teamBPlayers.map((member) => (
+                    <Link key={member.tg_id} to={matchId ? `/matches/${matchId}/players/${member.tg_id}` : "#"}>
+                      <PlayerCard player={member} size="lg" showRating={false} />
+                    </Link>
+                  ))
                 : [0, 1, 2].map((i) => (
                     <div
                       key={`empty-b-${i}`}
@@ -452,7 +461,7 @@ export function MatchLobby() {
                     setPermissionTarget(member);
                     return;
                   }
-                  navigate(`/players/${member.tg_id}`);
+                  navigate(matchId ? `/matches/${matchId}/players/${member.tg_id}` : `/players/${member.tg_id}`);
                 }}
               >
                 <PlayerCard player={member} showRoleBadge />

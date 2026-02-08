@@ -2,6 +2,8 @@
 
 import type { MatchParticipant, MatchSummary } from "../lib/types";
 import { resolveMediaUrl } from "../lib/media";
+import { useAppContext } from "../lib/app-context";
+import { formatVenueLabel } from "../lib/venue";
 
 function getInitials(name: string) {
   const trimmed = name.trim();
@@ -72,6 +74,7 @@ function AvatarStack({ members, align }: { members: { name: string; avatar: stri
 }
 
 export function MatchCard({ match }: { match: MatchSummary }) {
+  const { me } = useAppContext();
   const isFinished = match.status === "finished";
   const isLive = match.status === "live";
   const isLobby = match.status === "created";
@@ -80,6 +83,10 @@ export function MatchCard({ match }: { match: MatchSummary }) {
   const teamA = mapAvatars(match.team_a_members || []);
   const teamB = mapAvatars(match.team_b_members || []);
   const allPlayers = [...teamA, ...teamB];
+  const mePlayed = Boolean(
+    me?.tg_id &&
+      [...(match.team_a_members || []), ...(match.team_b_members || [])].some((member) => member.tg_id === me.tg_id)
+  );
 
   const mvpPlayer = match.mvp?.player ?? null;
   const mvpHasLeader = Boolean(match.mvp?.top_tg_id);
@@ -89,6 +96,28 @@ export function MatchCard({ match }: { match: MatchSummary }) {
   const resultLabel = match.score_a === match.score_b ? "DRAW" : match.score_a > match.score_b ? "WIN" : "LOSS";
   const aWins = match.score_a > match.score_b;
   const bWins = match.score_b > match.score_a;
+  const aScoreClass = isLive
+    ? aWins
+      ? "text-red-600 opacity-100 animate-pulse"
+      : bWins
+        ? "text-red-600 opacity-40"
+        : "text-red-600 opacity-100 animate-pulse"
+    : aWins
+      ? "text-[color:var(--text-main)] opacity-100"
+      : bWins
+        ? "text-[color:var(--text-main)] opacity-40"
+        : "text-[color:var(--text-main)] opacity-100";
+  const bScoreClass = isLive
+    ? bWins
+      ? "text-red-600 opacity-100 animate-pulse"
+      : aWins
+        ? "text-red-600 opacity-40"
+        : "text-red-600 opacity-100 animate-pulse"
+    : bWins
+      ? "text-[color:var(--text-main)] opacity-100"
+      : aWins
+        ? "text-[color:var(--text-main)] opacity-40"
+        : "text-[color:var(--text-main)] opacity-100";
 
   const target =
     match.status === "finished"
@@ -143,33 +172,17 @@ export function MatchCard({ match }: { match: MatchSummary }) {
           {isLobby ? <AvatarStack members={allPlayers} align="left" /> : <AvatarStack members={teamA} align="left" />}
         </div>
 
-        <div className="flex flex-col items-center pt-2">
+        <div className="flex flex-col items-center pt-4">
           {!isLobby ? (
             <div className="flex items-center gap-1">
               <span
-                className={`text-4xl font-black ${
-                  isLive
-                    ? "text-red-600 animate-pulse"
-                    : aWins
-                      ? "text-[color:var(--text-main)]"
-                      : bWins
-                        ? "text-[color:var(--text-main)]/30"
-                        : "text-[color:var(--text-main)]"
-                }`}
+                className={`text-4xl font-black ${aScoreClass}`}
               >
                 {match.score_a}
               </span>
               <span className="text-[color:var(--text-main)]/40 text-2xl font-black">:</span>
               <span
-                className={`text-4xl font-black ${
-                  isLive
-                    ? "text-red-600 animate-pulse"
-                    : bWins
-                      ? "text-[color:var(--text-main)]"
-                      : aWins
-                        ? "text-[color:var(--text-main)]/30"
-                        : "text-[color:var(--text-main)]"
-                }`}
+                className={`text-4xl font-black ${bScoreClass}`}
               >
                 {match.score_b}
               </span>
@@ -177,7 +190,7 @@ export function MatchCard({ match }: { match: MatchSummary }) {
           ) : (
             <div className="h-10" />
           )}
-          {isFinished ? (
+          {isFinished && mePlayed ? (
             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded border mt-1 border-zinc-700 text-zinc-500">
               {resultLabel}
             </span>
@@ -193,7 +206,7 @@ export function MatchCard({ match }: { match: MatchSummary }) {
       <Link to={target} className="flex items-center justify-between border-t pt-3 mt-1 border-[color:var(--border-main)]/10">
         <div className="flex flex-col overflow-hidden">
           <span className="font-black text-sm uppercase italic truncate max-w-[150px] text-[color:var(--text-main)]">
-            IN {match.venue}
+            IN {formatVenueLabel(match.venue)}
           </span>
           <div className="flex gap-2 items-center flex-wrap">
             <span className="font-bold text-[11px] uppercase text-[color:var(--text-main)] tracking-tight whitespace-nowrap">

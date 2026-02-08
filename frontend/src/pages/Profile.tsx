@@ -17,6 +17,7 @@ import { useAppContext } from "../lib/app-context";
 import { Input } from "../components/ui/input";
 import { formatApiError } from "../lib/errors";
 import { resolveMediaUrl } from "../lib/media";
+import { formatVenueLabel } from "../lib/venue";
 
 type ProfileTheme = {
   id: string;
@@ -201,7 +202,7 @@ export function buildProfileMatch(match: ProfileHistoryItem, meId: number | null
   const scoreOpponent = meInB ? match.score_a : match.score_b;
   const result =
     scoreMyTeam === scoreOpponent ? "DRAW" : scoreMyTeam > scoreOpponent ? "WIN" : "LOSS";
-  const opponentLabel = match.venue?.trim() ? match.venue : meInB ? "Team A" : "Team B";
+  const opponentLabel = match.venue?.trim() ? formatVenueLabel(match.venue) : meInB ? "Team A" : "Team B";
 
   const allMembers = [...myTeam, ...opponentTeam];
   const mvpId = match.mvp?.top_tg_id ?? null;

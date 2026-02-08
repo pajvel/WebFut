@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
   deleteEvent,
@@ -140,6 +140,7 @@ export function LiveMatch() {
     const member = data?.members.find((m) => m.tg_id === tgId);
     return member?.name || "-";
   };
+  const playerPath = (tgId: number) => (matchId ? `/matches/${matchId}/players/${tgId}` : "#");
 
   const handleGoalSubmit = async ({ scorer_tg_id, assist_tg_id }: { scorer_tg_id: number; assist_tg_id?: number | null }) => {
     if (!matchId) return;
@@ -316,16 +317,18 @@ export function LiveMatch() {
                 className="relative h-14 rounded-xl border-2 border-[var(--border-main)] flex items-center p-1 overflow-hidden"
                 style={{ backgroundColor: "var(--bg-contrast)", color: "var(--text-contrast)" }}
               >
-                {player.avatar ? (
-                  <img src={resolveMediaUrl(player.avatar)} alt={player.name} className="w-10 h-10 rounded-lg object-cover grayscale" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-[var(--bg-surface)] text-[var(--text-main)] flex items-center justify-center text-[10px] font-black">
-                    {player.name.slice(0, 2).toUpperCase()}
+                <Link to={playerPath(player.tg_id)} className="flex items-center min-w-0 flex-1">
+                  {player.avatar ? (
+                    <img src={resolveMediaUrl(player.avatar)} alt={player.name} className="w-10 h-10 rounded-lg object-cover grayscale" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-[var(--bg-surface)] text-[var(--text-main)] flex items-center justify-center text-[10px] font-black">
+                      {player.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-2 flex-1 min-w-0">
+                    <div className="text-[11px] font-black italic leading-none truncate">{player.name}</div>
                   </div>
-                )}
-                <div className="ml-2 flex-1 min-w-0">
-                  <div className="text-[11px] font-black italic leading-none truncate">{player.name}</div>
-                </div>
+                </Link>
                 <div className="flex flex-col justify-center ml-1 pr-1">
                   <button
                     onClick={() => {
@@ -351,16 +354,18 @@ export function LiveMatch() {
                 className="relative h-14 rounded-xl border-2 border-[var(--border-main)] flex items-center p-1 overflow-hidden"
                 style={{ backgroundColor: "var(--bg-surface)", color: "var(--text-main)" }}
               >
-                {player.avatar ? (
-                  <img src={resolveMediaUrl(player.avatar)} alt={player.name} className="w-10 h-10 rounded-lg object-cover grayscale" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-[var(--bg-contrast)] text-[var(--text-contrast)] flex items-center justify-center text-[10px] font-black">
-                    {player.name.slice(0, 2).toUpperCase()}
+                <Link to={playerPath(player.tg_id)} className="flex items-center min-w-0 flex-1">
+                  {player.avatar ? (
+                    <img src={resolveMediaUrl(player.avatar)} alt={player.name} className="w-10 h-10 rounded-lg object-cover grayscale" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-[var(--bg-contrast)] text-[var(--text-contrast)] flex items-center justify-center text-[10px] font-black">
+                      {player.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-2 flex-1 min-w-0">
+                    <div className="text-[11px] font-black italic leading-none truncate">{player.name}</div>
                   </div>
-                )}
-                <div className="ml-2 flex-1 min-w-0">
-                  <div className="text-[11px] font-black italic leading-none truncate">{player.name}</div>
-                </div>
+                </Link>
                 <div className="flex flex-col justify-center ml-1 pr-1">
                   <button
                     onClick={() => {
@@ -552,14 +557,28 @@ export function LiveMatch() {
                       <div className="mx-3 h-8 w-[1px] bg-current opacity-30"></div>
                       <div className="flex-1">
                         <div className="text-sm font-black italic leading-none uppercase tracking-tighter">
-                          {playerName(event.scorer_tg_id)}
+                          {event.scorer_tg_id ? (
+                            <Link to={playerPath(event.scorer_tg_id)} className="underline-offset-2 hover:underline">
+                              {playerName(event.scorer_tg_id)}
+                            </Link>
+                          ) : (
+                            playerName(event.scorer_tg_id)
+                          )}
                         </div>
                         {isOG ? (
                           <div className="text-[9px] font-bold opacity-80 uppercase mt-0.5">OWN GOAL ERROR</div>
                         ) : event.assist_tg_id ? (
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-[8px] font-black border-[1px] border-current px-1 rounded opacity-60">ASSIST</span>
-                            <span className="text-[9px] font-bold opacity-80 uppercase">{playerName(event.assist_tg_id)}</span>
+                            <span className="text-[9px] font-bold opacity-80 uppercase">
+                              {event.assist_tg_id ? (
+                                <Link to={playerPath(event.assist_tg_id)} className="underline-offset-2 hover:underline">
+                                  {playerName(event.assist_tg_id)}
+                                </Link>
+                              ) : (
+                                playerName(event.assist_tg_id)
+                              )}
+                            </span>
                           </div>
                         ) : null}
                       </div>
@@ -629,9 +648,9 @@ export function LiveMatch() {
                     key={s.tg_id}
                     className="flex items-center justify-between border-2 border-[var(--border-main)] rounded-xl px-3 py-2"
                   >
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-main)]">
+                    <Link to={playerPath(s.tg_id)} className="text-[10px] font-black uppercase tracking-widest text-[var(--text-main)] hover:underline underline-offset-2">
                       {s.name}
-                    </span>
+                    </Link>
                     {isOrganizer ? (
                       <button
                         onClick={async () => {

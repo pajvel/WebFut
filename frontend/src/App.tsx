@@ -74,7 +74,7 @@ export default function App() {
           className={
             isProfile || isAdmin
               ? "mx-auto w-full max-w-none px-0 pb-0 pt-0"
-              : "mx-auto w-full max-w-md px-4 pb-2 pt-6"
+              : "mx-auto w-full max-w-md px-4 pb-2 pt-0"
           }
         >
           <Outlet />
