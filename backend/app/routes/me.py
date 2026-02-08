@@ -264,20 +264,26 @@ def _build_profile(tg_id: int):
         .count()
     )
     mvp = db.query(Feedback).filter(Feedback.mvp_vote_tg_id == tg_id).count()
+    player_key = str(tg_id)
+    player_state = state.players.get(player_key) if hasattr(state, "players") else None
     last_rating = (
         db.query(RatingLog)
-        .filter_by(player_id=str(tg_id))
+        .filter_by(player_id=player_key)
         .order_by(RatingLog.created_at.desc())
         .first()
     )
+    # Profile should show the same current global rating as admin/state.
+    if player_state is not None:
+        global_rating = float(player_state.global_rating)
+    else:
+        base_rating = state.base_ratings.get(player_key) if hasattr(state, "base_ratings") else None
+        global_rating = float(base_rating) if base_rating is not None else float(TeamConfig().global_start_rating)
+
     if last_rating:
-        global_rating = float(last_rating.post_global)
         last_delta = float(last_rating.delta)
         last_match_id = last_rating.match_id
         last_updated_at = last_rating.created_at.isoformat()
     else:
-        base_rating = state.base_ratings.get(str(tg_id)) if hasattr(state, "base_ratings") else None
-        global_rating = float(base_rating) if base_rating is not None else float(TeamConfig().global_start_rating)
         last_delta = None
         last_match_id = None
         last_updated_at = None

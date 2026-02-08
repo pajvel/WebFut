@@ -22,6 +22,7 @@ export function TopBar({ title, avatarUrl }: TopBarProps) {
   const [matchMeta, setMatchMeta] = useState<MatchSummary | null>(null);
 
   const isProfile = location.pathname === "/profile";
+  const isAdmin = location.pathname.startsWith("/admin");
   const isMatchPage = location.pathname.startsWith("/matches/") && location.pathname !== "/matches";
   const matchIdMatch = location.pathname.match(/^\/matches\/(\d+)(?:\/|$)/);
   const matchId = matchIdMatch ? Number(matchIdMatch[1]) : null;
@@ -65,6 +66,10 @@ export function TopBar({ title, avatarUrl }: TopBarProps) {
   const handleBack = () => {
     if (hasProfileSubView) {
       navigate("/profile", { replace: true });
+      return;
+    }
+    if (isAdmin) {
+      navigate("/profile");
       return;
     }
     if (location.pathname.includes("/teams")) {
@@ -168,6 +173,18 @@ export function TopBar({ title, avatarUrl }: TopBarProps) {
             <span className="font-black italic text-lg uppercase tracking-tighter text-[color:var(--text-main)]">
               {rightLabel}
             </span>
+          ) : isAdmin ? (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("admin-open-menu"))}
+              aria-label="Меню админки"
+              className="flex h-10 w-10 items-center justify-center border-2 border-[var(--border-main)] bg-[var(--bg-surface)] active:scale-90 transition-transform overflow-hidden"
+              style={{ boxShadow: "4px 4px 0px 0px var(--border-main)" }}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
           ) : (
             <button
               type="button"

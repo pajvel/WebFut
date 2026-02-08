@@ -711,7 +711,8 @@ const ResultTab = ({
   const synergyOwn = [getPlayer(feedback.syn_team_a), getPlayer(feedback.syn_team_b)].filter(Boolean) as Player[];
   const synergyOpp = [getPlayer(feedback.syn_opp_a), getPlayer(feedback.syn_opp_b)].filter(Boolean) as Player[];
   const dominationOwn = [getPlayer(feedback.dom_my), getPlayer(feedback.dom_opp_target)] as (Player | null)[];
-  const dominationOpp = [getPlayer(feedback.dom_opp), getPlayer(feedback.dom_my_target)] as (Player | null)[];
+  // For the second domination row, the right slot is the dominator.
+  const dominationOpp = [getPlayer(feedback.dom_my_target), getPlayer(feedback.dom_opp)] as (Player | null)[];
   const bestAttacker = getPlayer(feedback.best_attacker);
   const bestDefender = getPlayer(feedback.best_defender);
 
@@ -998,8 +999,8 @@ const ResultTab = ({
               title="HE WAS STRONGER"
               p1={dominationOpp[0]}
               p2={dominationOpp[1]}
-              onP1={() => setActivePicker({ type: "SINGLE", target: "DOM_OPP_1", teamFilter: "OPP" })}
-              onP2={() => setActivePicker({ type: "SINGLE", target: "DOM_OPP_2", teamFilter: "MY" })}
+              onP1={() => setActivePicker({ type: "SINGLE", target: "DOM_OPP_2", teamFilter: "MY" })}
+              onP2={() => setActivePicker({ type: "SINGLE", target: "DOM_OPP_1", teamFilter: "OPP" })}
               reverse
             />
           </div>
@@ -1178,9 +1179,9 @@ const SynergyBlock = ({ label, players, onClick }: { label: string; players: Pla
           {players.map((p) => {
             const avatarUrl = p.avatar ? resolveMediaUrl(p.avatar) : "";
             return avatarUrl ? (
-              <img key={p.id} src={avatarUrl} className="w-10 h-10 border-2 border-[var(--text-contrast)] rounded-sm grayscale bg-[var(--bg-surface)] object-cover" />
+              <img key={p.id} src={avatarUrl} className="w-10 h-10 border-2 border-current rounded-sm grayscale bg-[var(--bg-surface)] object-cover" />
             ) : (
-              <div key={p.id} className="w-10 h-10 border-2 border-[var(--text-contrast)] rounded-sm grayscale bg-[var(--bg-surface)] flex items-center justify-center font-black text-[9px]">
+              <div key={p.id} className="w-10 h-10 border-2 border-current rounded-sm grayscale bg-[var(--bg-surface)] flex items-center justify-center font-black text-[9px]">
                 {getInitials(p.name)}
               </div>
             );

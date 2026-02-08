@@ -63,6 +63,7 @@ export type TeamVariant = {
     B: string[];
   };
   why_text: string | null;
+  explanation?: string | null;
   power?: {
     avg_a: number;
     avg_b: number;

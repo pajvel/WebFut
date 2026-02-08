@@ -341,6 +341,12 @@ export function Admin() {
   }, [isAdmin]);
 
   useEffect(() => {
+    const handleOpenMenu = () => setIsMenuOpen(true);
+    window.addEventListener("admin-open-menu", handleOpenMenu);
+    return () => window.removeEventListener("admin-open-menu", handleOpenMenu);
+  }, []);
+
+  useEffect(() => {
     if (activeTab === "TG_LINK") {
       loadTgProfiles();
     }
@@ -946,18 +952,6 @@ export function Admin() {
       ) : null}
       <main className="flex-1 bg-[var(--bg-page)] flex flex-col relative overflow-hidden min-w-0">
         <div className="relative z-10 flex-1 overflow-y-auto p-4 lg:p-8">
-          <div className="lg:hidden mb-4 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
-            <div className="font-black italic tracking-tighter uppercase text-sm"> {activeTab.replace("_", " ")}
-            </div>
-            <button
-              onClick={() => setIsMenuOpen(true)}
-              className="text-[var(--text-main)] p-1 active:scale-95 transition-all"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
           <div className="space-y-6"> {error ? <StatusCard title="Ошибка" message={error} onClose={() => setError(null)} /> : null}
 
             {activeTab === "USERS" ? (() => {
@@ -2213,6 +2207,17 @@ export function Admin() {
                   {filteredFeedbackItems.map((item, index) => {
                     const answers = (item.answers_json || {}) as Record<string, unknown>;
                     const worst = answers.worst;
+                    const comparisons = (answers.comparisons || {}) as Record<string, unknown>;
+                    const pairs = (answers.comparison_pairs || {}) as Record<string, unknown>;
+                    const expandedPairs = (answers.expanded_pairs || {}) as Record<string, unknown>;
+                    const roleVote = (answers.role_vote || {}) as Record<string, unknown>;
+                    const attackerPicked = answers.best_attacker || (roleVote.role === "attacker" ? roleVote.player_id : null);
+                    const defenderPicked = answers.best_defender || (roleVote.role === "defender" ? roleVote.player_id : null);
+                    const duelRows = [
+                      { label: "DUEL 1", pair: pairs.cmp_own, pick: comparisons.cmp_own },
+                      { label: "DUEL 2", pair: pairs.cmp_opp, pick: comparisons.cmp_opp },
+                      { label: "DUEL 3", pair: pairs.cmp_cross, pick: comparisons.cmp_cross }
+                    ];
                     return (
                       <div
                         key={`${item.match_id}-${item.tg_id}-${index}`}
@@ -2220,38 +2225,98 @@ export function Admin() {
                       >
                         <div className="bg-[var(--bg-surface)] p-3 flex justify-between items-center border-b-2 border-[var(--border-main)]">
                           <div className="flex items-center gap-4 min-w-0">
-                            <span className="text-[var(--text-main)] text-2xl font-black uppercase italic leading-none">
-                              #{item.match_id}
+                            <span className="text-[var(--text-main)] text-2xl font-black uppercase italic leading-none tracking-tighter">
+                              МАТЧ #{item.match_id}
                             </span>
                             <span className="text-[var(--text-accent)] text-[12px] font-black uppercase leading-none truncate tracking-tight">
                               {nameById(item.tg_id)}
                             </span>
                           </div>
                           <span className="text-[10px] font-mono opacity-60 uppercase italic leading-none shrink-0">
-                            vote
+                            FEEDBACK
                           </span>
                         </div>
                         <div className="grid grid-cols-2 divide-x-2 divide-[var(--border-main)] border-b-2 border-[var(--border-main)]">
-                          <div className="p-4 bg-[var(--bg-surface)]/20 min-w-0">
+                          <div className="p-4 bg-[var(--bg-surface)]/30 min-w-0">
                             <div className="text-[10px] opacity-60 font-black mb-1 uppercase tracking-widest">MVP</div>
-                            <div className="text-[28px] font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
+                            <div className="text-[26px] font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
                               {nameById(item.mvp_vote_tg_id)}
                             </div>
                           </div>
                           <div className="p-4 bg-[var(--bg-page)] min-w-0">
                             <div className="text-[10px] opacity-60 font-black mb-1 uppercase tracking-widest">WORST</div>
-                            <div className="text-[28px] text-[var(--text-main)]/60 font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
+                            <div className="text-[26px] text-[var(--text-main)]/60 font-black uppercase italic leading-none tracking-tighter whitespace-normal break-words">
                               {nameById(worst)}
                             </div>
                           </div>
                         </div>
-                        <div className="bg-[var(--bg-surface)]/40 p-3 flex items-baseline gap-4">
-                          <span className="text-[10px] opacity-60 font-black uppercase tracking-[0.2em] shrink-0">
-                            BEST
-                          </span>
-                          <span className="text-[20px] text-[var(--text-accent)] font-black uppercase italic leading-none truncate">
-                            {nameById(answers.best)}
-                          </span>
+                        <div className="p-3 space-y-3 bg-[var(--bg-page)]">
+                          <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-main)]/50">DUELS</div>
+                          {duelRows.map((row) => {
+                            const pair = Array.isArray(row.pair) ? row.pair : [];
+                            if (pair.length < 2) return null;
+                            const left = pair[0];
+                            const right = pair[1];
+                            const selected = row.pick;
+                            const leftSelected = String(left) === String(selected);
+                            const rightSelected = String(right) === String(selected);
+                            return (
+                              <div key={row.label} className="border border-[var(--border-main)]/40 p-2 text-[10px] font-black uppercase italic">
+                                <span className="opacity-50 mr-2">{row.label}</span>
+                                <span
+                                  className={
+                                    leftSelected
+                                      ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)] border border-[var(--border-main)] rounded px-1"
+                                      : "text-[var(--text-main)]/80"
+                                  }
+                                >
+                                  {nameById(left)}
+                                </span>
+                                <span className="opacity-50 mx-2">VS</span>
+                                <span
+                                  className={
+                                    rightSelected
+                                      ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)] border border-[var(--border-main)] rounded px-1"
+                                      : "text-[var(--text-main)]/80"
+                                  }
+                                >
+                                  {nameById(right)}
+                                </span>
+                              </div>
+                            );
+                          })}
+
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div className="border border-[var(--border-main)]/50 p-2 bg-[var(--bg-surface)]/20">
+                              <div className="text-[9px] font-black uppercase opacity-50 mb-1">SYNERGY</div>
+                              <div className="text-[10px] font-black uppercase italic text-[var(--text-main)]/80">
+                                {nameById(expandedPairs.syn_team_a)} + {nameById(expandedPairs.syn_team_b)}
+                              </div>
+                              <div className="text-[10px] font-black uppercase italic text-[var(--text-main)]/80">
+                                {nameById(expandedPairs.syn_opp_a)} + {nameById(expandedPairs.syn_opp_b)}
+                              </div>
+                            </div>
+                            <div className="border border-[var(--border-main)]/50 p-2 bg-[var(--bg-surface)]/20">
+                              <div className="text-[9px] font-black uppercase opacity-50 mb-1">DOMINATION</div>
+                              <div className="text-[10px] font-black uppercase italic text-[var(--text-main)]/80">
+                                {nameById(expandedPairs.dom_my)} {"->"} {nameById(expandedPairs.dom_opp_target)}
+                              </div>
+                              <div className="text-[10px] font-black uppercase italic text-[var(--text-main)]/80">
+                                {nameById(expandedPairs.dom_opp)} {"->"} {nameById(expandedPairs.dom_my_target)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div className="border border-[var(--border-main)]/50 p-2 bg-[var(--bg-surface)]/20">
+                              <div className="text-[9px] font-black uppercase opacity-50">ATTACK</div>
+                              <div className="text-[12px] font-black uppercase italic">{nameById(attackerPicked)}</div>
+                            </div>
+                            <div className="border border-[var(--border-main)]/50 p-2 bg-[var(--bg-surface)]/20">
+                              <div className="text-[9px] font-black uppercase opacity-50">DEFENSE</div>
+                              <div className="text-[12px] font-black uppercase italic">{nameById(defenderPicked)}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
