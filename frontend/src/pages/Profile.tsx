@@ -121,7 +121,6 @@ export function Profile() {
   );
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardItems, setLeaderboardItems] = useState<LeaderboardEntry[]>([]);
-  const [leaderboardSnapshot, setLeaderboardSnapshot] = useState<LeaderboardEntry[]>([]);
   const [draftName, setDraftName] = useState("");
   const [draftFile, setDraftFile] = useState<File | null>(null);
   const [resetToTelegramAvatar, setResetToTelegramAvatar] = useState(false);
@@ -150,8 +149,8 @@ export function Profile() {
         localStorage.removeItem(PROFILE_CACHE_KEY);
       }
     }
-    Promise.allSettled([getProfile(), getLeaderboard()]).then((results) => {
-      const [profileResult, leaderboardResult] = results;
+    Promise.allSettled([getProfile()]).then((results) => {
+      const [profileResult] = results;
       if (profileResult.status === "fulfilled") {
         setStats(profileResult.value?.stats || emptyStats);
         setRating(profileResult.value?.rating || null);
@@ -166,9 +165,6 @@ export function Profile() {
         );
       } else {
         setError(formatApiError(profileResult.reason));
-      }
-      if (leaderboardResult.status === "fulfilled") {
-        setLeaderboardSnapshot(leaderboardResult.value?.items || []);
       }
     });
   }, []);
@@ -259,11 +255,9 @@ export function Profile() {
 
   const latestMatches = useMemo(() => profileMatches.slice(0, 6), [profileMatches]);
   const ratingValue = useMemo(() => {
-    const myEntry = leaderboardSnapshot.find((entry) => entry.tg_id === (me?.tg_id ?? null));
-    if (myEntry && !Number.isNaN(myEntry.rating)) return myEntry.rating;
     if (!rating || Number.isNaN(rating.global)) return null;
     return rating.global;
-  }, [leaderboardSnapshot, me?.tg_id, rating]);
+  }, [rating]);
   const ratingDelta = rating?.last_delta ?? null;
 
   const profileName = (me?.custom_name || me?.tg_name || "PLAYER").toUpperCase();

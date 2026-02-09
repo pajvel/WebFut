@@ -152,13 +152,13 @@ def get_user_profile(tg_id: int):
     return ok(_build_profile(tg_id))
 
 
-def _build_profile(tg_id: int):
+def _build_profile(target_tg_id: int):
     db = get_db()
     state = load_state(db, 1)
     memberships = (
         db.query(MatchMember, Match)
         .join(Match, MatchMember.match_id == Match.id)
-        .filter(MatchMember.tg_id == tg_id)
+        .filter(MatchMember.tg_id == target_tg_id)
         .order_by(Match.created_at.desc())
         .all()
     )
@@ -216,8 +216,8 @@ def _build_profile(tg_id: int):
             .all()
         )
         vote_counts = {}
-        for (tg_id,) in mvp_votes:
-            vote_counts[tg_id] = vote_counts.get(tg_id, 0) + 1
+        for (voted_tg_id,) in mvp_votes:
+            vote_counts[voted_tg_id] = vote_counts.get(voted_tg_id, 0) + 1
 
         player_stats = {}
         events = db.query(Event).filter_by(match_id=match.id).all()
@@ -268,7 +268,7 @@ def _build_profile(tg_id: int):
         .filter(
             Event.match_id.in_(finished_ids),
             Event.event_type == "goal",
-            Event.scorer_tg_id == tg_id,
+            Event.scorer_tg_id == target_tg_id,
             Event.is_deleted.is_not(True),
         )
         .count()
@@ -280,8 +280,11 @@ def _build_profile(tg_id: int):
             Event.match_id.in_(finished_ids),
             Event.is_deleted.is_not(True),
             or_(
-                and_(Event.event_type == "goal", Event.assist_tg_id == tg_id),
-                and_(Event.event_type == "assist", or_(Event.assist_tg_id == tg_id, Event.scorer_tg_id == tg_id)),
+                and_(Event.event_type == "goal", Event.assist_tg_id == target_tg_id),
+                and_(
+                    Event.event_type == "assist",
+                    or_(Event.assist_tg_id == target_tg_id, Event.scorer_tg_id == target_tg_id),
+                ),
             ),
         )
         .count()
@@ -290,10 +293,10 @@ def _build_profile(tg_id: int):
     # MVP in profile = number of votes for this player in finished matches.
     mvp = (
         db.query(Feedback)
-        .filter(Feedback.match_id.in_(finished_ids), Feedback.mvp_vote_tg_id == tg_id)
+        .filter(Feedback.match_id.in_(finished_ids), Feedback.mvp_vote_tg_id == target_tg_id)
         .count()
     )
-    player_key = str(tg_id)
+    player_key = str(target_tg_id)
     player_state = state.players.get(player_key) if hasattr(state, "players") else None
     last_rating = (
         db.query(RatingLog)
@@ -334,7 +337,7 @@ def _build_profile(tg_id: int):
 
         team_a = [str(p) for p in teams.get("A", [])]
         team_b = [str(p) for p in teams.get("B", [])]
-        user_id = str(tg_id)
+        user_id = str(target_tg_id)
         if user_id in team_a:
             user_team = "A"
         elif user_id in team_b:
