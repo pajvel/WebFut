@@ -33,6 +33,17 @@ export function PlayerProfile() {
         setStats(data?.stats || emptyStats);
         setRating(data?.rating || null);
         setHistory(data?.history || []);
+        const allMembers = (data?.history || []).flatMap((match) => [
+          ...(match.team_a_members || []),
+          ...(match.team_b_members || [])
+        ]);
+        const meFromHistory = allMembers.find((member) => String(member.tg_id) === String(tgId));
+        if (meFromHistory) {
+          setPlayer((prev) => ({
+            name: meFromHistory.name || prev?.name || "PLAYER",
+            avatar: meFromHistory.avatar || prev?.avatar || null
+          }));
+        }
       })
       .catch((err) => setError(formatApiError(err)));
   }, [tgId]);
@@ -42,7 +53,12 @@ export function PlayerProfile() {
     getMatch(Number(matchId))
       .then((data: MatchDetail) => {
         const member = data.members.find((m) => String(m.tg_id) === String(tgId));
-        if (member) setPlayer({ name: member.name, avatar: member.avatar });
+        if (member) {
+          setPlayer((prev) => ({
+            name: member.name || prev?.name || "PLAYER",
+            avatar: member.avatar || prev?.avatar || null
+          }));
+        }
       })
       .catch(() => undefined);
   }, [matchId, tgId]);

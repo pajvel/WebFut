@@ -721,8 +721,12 @@ def link_profiles():
     except (TypeError, ValueError):
         return err("invalid_ids", 400)
 
-    if source_tg >= 0:
+    tg_id_threshold = 100_000
+    # Manual profiles can be negative ids and small positive ids from seeds/imports.
+    if source_tg >= tg_id_threshold:
         return err("manual_id_expected", 400)
+    if target_tg < tg_id_threshold:
+        return err("tg_id_expected", 400)
 
     target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
     source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()

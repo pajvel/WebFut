@@ -34,6 +34,19 @@ def _display_venue(venue: str | None) -> str | None:
     return _VENUE_MAP.get(venue, venue)
 
 
+def _safe_avatar(custom_avatar: str | None, tg_avatar: str | None) -> str | None:
+    if not custom_avatar:
+        return tg_avatar
+    path = custom_avatar.split("?", 1)[0]
+    if path.startswith("/uploads/") or "/uploads/" in path:
+        filename = os.path.basename(path)
+        target_path = os.path.join(Config.UPLOADS_DIR, filename)
+        if os.path.exists(target_path):
+            return custom_avatar
+        return tg_avatar
+    return custom_avatar
+
+
 @bp.get("/me")
 def get_me():
     user = require_user()
@@ -180,7 +193,7 @@ def _build_profile(target_tg_id: int):
             member.tg_id: {
                 "tg_id": member.tg_id,
                 "name": user_row.custom_name or user_row.tg_name,
-                "avatar": user_row.custom_avatar or user_row.tg_avatar,
+                "avatar": _safe_avatar(user_row.custom_avatar, user_row.tg_avatar),
             }
             for member, user_row in members
         }
@@ -458,7 +471,7 @@ def get_leaderboard():
             {
                 "tg_id": int(player_id) if player_id.isdigit() else None,
                 "name": (user.custom_name or user.tg_name) if user else player_id,
-                "avatar": (user.custom_avatar or user.tg_avatar) if user else None,
+                "avatar": (_safe_avatar(user.custom_avatar, user.tg_avatar) if user else None),
                 "games": games,
                 "wins": entry_stats["wins"],
                 "losses": entry_stats["losses"],
