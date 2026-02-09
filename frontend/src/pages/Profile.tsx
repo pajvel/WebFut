@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { getLeaderboard, getProfile, patchMe, uploadAvatar } from "../lib/api";
+import { getLeaderboard, getProfile, patchMe, patchSettings, uploadAvatar } from "../lib/api";
 import type { LeaderboardEntry, MatchParticipant, ProfileHistoryItem, ProfileRating, ProfileStats } from "../lib/types";
 import { useAppContext } from "../lib/app-context";
 import { Input } from "../components/ui/input";
@@ -110,7 +110,7 @@ function getMatchTarget(match: ProfileHistoryItem) {
 
 export function Profile() {
   const navigate = useNavigate();
-  const { me, refreshMe } = useAppContext();
+  const { me, settings, refreshMe } = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState<ProfileStats>(emptyStats);
   const [rating, setRating] = useState<ProfileRating | null>(null);
@@ -130,6 +130,7 @@ export function Profile() {
   );
   const [saving, setSaving] = useState(false);
   const [avatarOverride, setAvatarOverride] = useState<string | null>(null);
+  const [avatarGrayscale, setAvatarGrayscale] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editOpen = searchParams.get("view") === "edit";
 
@@ -186,8 +187,9 @@ export function Profile() {
       setDraftName(me?.custom_name || me?.tg_name || "");
       setDraftFile(null);
       setResetToTelegramAvatar(false);
+      setAvatarGrayscale(settings?.avatar_grayscale !== false);
     }
-  }, [editOpen, me?.custom_name, me?.tg_name]);
+  }, [editOpen, me?.custom_name, me?.tg_name, settings?.avatar_grayscale]);
 
   const handleLeaderboardOpenChange = (open: boolean) => {
     if (open) {
@@ -219,6 +221,9 @@ export function Profile() {
       }
       if ((nextName && nextName !== (me?.custom_name || me?.tg_name)) || (!nextName && hasCustomName)) {
         await patchMe({ custom_name: nextName || null });
+      }
+      if (avatarGrayscale !== (settings?.avatar_grayscale !== false)) {
+        await patchSettings({ avatar_grayscale: avatarGrayscale });
       }
       if (resetToTelegramAvatar) {
         await patchMe({ custom_avatar: null });
@@ -429,6 +434,35 @@ export function Profile() {
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-[1.25rem] border-2 p-4"
+              style={{ borderColor: "var(--border-main)", background: "var(--bg-surface)", color: "var(--text-main)" }}
+            >
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Аватарки</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAvatarGrayscale(true)}
+                  className={`h-10 rounded-xl border-2 font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform ${
+                    avatarGrayscale ? "opacity-100" : "opacity-70"
+                  }`}
+                  style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+                >
+                  Ч/Б ON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAvatarGrayscale(false)}
+                  className={`h-10 rounded-xl border-2 font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform ${
+                    !avatarGrayscale ? "opacity-100" : "opacity-70"
+                  }`}
+                  style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+                >
+                  COLOR
+                </button>
               </div>
             </div>
 

@@ -34,6 +34,7 @@ class UserSettings(Base):
     tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
     theme = Column(String, nullable=False, default="light")
     mode_18plus = Column(Boolean, nullable=False, default=False)
+    avatar_grayscale = Column(Boolean, nullable=False, default=True)
 
 
 class Context(Base):

@@ -77,6 +77,10 @@ select {
   min-height: 100vh;
 }
 
+html.avatars-grayscale img {
+  filter: grayscale(1);
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }

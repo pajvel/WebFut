@@ -106,7 +106,13 @@ def get_settings():
     user = require_user()
     db = get_db()
     settings = db.query(UserSettings).filter_by(tg_id=user.tg_id).one()
-    return ok({"theme": settings.theme, "mode_18plus": settings.mode_18plus})
+    return ok(
+        {
+            "theme": settings.theme,
+            "mode_18plus": settings.mode_18plus,
+            "avatar_grayscale": bool(settings.avatar_grayscale),
+        }
+    )
 
 
 @bp.patch("/me/settings")
@@ -122,6 +128,8 @@ def patch_settings():
         settings.theme = theme
     if "mode_18plus" in data:
         settings.mode_18plus = bool(data["mode_18plus"])
+    if "avatar_grayscale" in data:
+        settings.avatar_grayscale = bool(data["avatar_grayscale"])
     db.commit()
     return ok()
 
@@ -253,16 +261,19 @@ def _build_profile(tg_id: int):
     finished_matches = [m for m in history if m["status"] == "finished"]
     finished_ids = {m["id"] for m in finished_matches}
 
-    goals = (
-        db.query(Event)
-        .filter(Event.scorer_tg_id == tg_id, Event.is_deleted.is_(False))
-        .count()
+    # Use latest rating log per finished match to avoid stale/rolled-back event edits.
+    rating_rows = (
+        db.query(RatingLog)
+        .filter(RatingLog.player_id == str(tg_id), RatingLog.match_id.in_(finished_ids))
+        .order_by(RatingLog.created_at.desc())
+        .all()
     )
-    assists = (
-        db.query(Event)
-        .filter(Event.assist_tg_id == tg_id, Event.is_deleted.is_(False))
-        .count()
-    )
+    latest_by_match: dict[int, RatingLog] = {}
+    for row in rating_rows:
+        if row.match_id not in latest_by_match:
+            latest_by_match[row.match_id] = row
+    goals = int(sum((row.goals or 0) for row in latest_by_match.values()))
+    assists = int(sum((row.assists or 0) for row in latest_by_match.values()))
     mvp = db.query(Feedback).filter(Feedback.mvp_vote_tg_id == tg_id).count()
     player_key = str(tg_id)
     player_state = state.players.get(player_key) if hasattr(state, "players") else None

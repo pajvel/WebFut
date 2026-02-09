@@ -26,7 +26,7 @@ export function BootSplash({ progress, stage, canFastFinish = false, onFastFinis
         <h1 className="text-7xl lg:text-9xl text-900 italic tracking-tighter leading-none text-white mb-4">WEBFUT</h1>
 
         <div className="bg-webfut-pink text-black px-8 py-2 text-[10px] lg:text-sm text-900 uppercase tracking-[0.2em] inline-block italic transform mb-16">
-          SYSTEM INITIALIZATION
+          FOOTBALL AI-HELPER
         </div>
 
         <div className="w-72 lg:w-96 mx-auto">

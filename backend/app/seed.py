@@ -150,6 +150,12 @@ def ensure_schema() -> None:
         conn.execute(
             text("ALTER TABLE team_current ADD COLUMN IF NOT EXISTS last_notify_hash TEXT")
         )
+        conn.execute(
+            text("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS avatar_grayscale BOOLEAN DEFAULT TRUE")
+        )
+        conn.execute(
+            text("UPDATE user_settings SET avatar_grayscale = TRUE WHERE avatar_grayscale IS NULL")
+        )
 
 
 def _reset_db() -> None:
@@ -185,7 +191,7 @@ def _ensure_context(session) -> Context:
 def _ensure_users(session) -> None:
     for name, tg_id in PLAYER_IDS.items():
         session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
-        session.add(UserSettings(tg_id=tg_id, theme="light", mode_18plus=False))
+        session.add(UserSettings(tg_id=tg_id, theme="light", mode_18plus=False, avatar_grayscale=True))
 
 
 def _make_team_match(venue: str, team_a: list[str], team_b: list[str], segments: list[dict]) -> TeamMatch:

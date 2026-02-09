@@ -129,11 +129,14 @@ export default function App() {
     if (settings?.theme) {
       document.documentElement.classList.toggle("dark", settings.theme === "dark");
     }
-  }, [settings?.theme]);
+    document.documentElement.classList.toggle("avatars-grayscale", settings?.avatar_grayscale !== false);
+  }, [settings?.theme, settings?.avatar_grayscale]);
 
   const setTheme = useCallback((theme: "light" | "dark") => {
     patchSettings({ theme }).then(() => {
-      setSettings((prev) => (prev ? { ...prev, theme } : { theme, mode_18plus: false }));
+      setSettings((prev) =>
+        prev ? { ...prev, theme } : { theme, mode_18plus: false, avatar_grayscale: true }
+      );
       document.documentElement.classList.toggle("dark", theme === "dark");
     });
   }, []);
