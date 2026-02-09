@@ -414,7 +414,7 @@ def create_user():
     return ok({"tg_id": user.tg_id})
 
 
-@bp.patch("/users/<int:tg_id>")
+@bp.route("/users/<int:tg_id>", methods=["PATCH", "PUT"])
 def patch_user(tg_id: int):
     if not _require_admin():
         return err("forbidden", 403)
@@ -429,7 +429,7 @@ def patch_user(tg_id: int):
     return ok()
 
 
-@bp.delete("/users/<int:tg_id>")
+@bp.route("/users/<int:tg_id>", methods=["DELETE", "POST"])
 def delete_user(tg_id: int):
     if not _require_admin():
         return err("forbidden", 403)
@@ -543,7 +543,7 @@ def patch_state_player():
     return ok()
 
 
-@bp.patch("/state/player/bind")
+@bp.route("/state/player/bind", methods=["PATCH", "POST", "PUT"])
 def bind_state_player():
     if not _require_admin():
         return err("forbidden", 403)
