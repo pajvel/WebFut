@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import copy
+import traceback
 from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, request
@@ -617,7 +618,8 @@ def bind_state_player():
         return err("bind_conflict", 400)
     except Exception:
         db.rollback()
-        return err("bind_failed", 400)
+        traceback.print_exc()
+        return err("bind_failed_pre_commit", 400)
     try:
         db.commit()
     except IntegrityError:
@@ -625,7 +627,8 @@ def bind_state_player():
         return err("bind_conflict", 400)
     except Exception:
         db.rollback()
-        return err("bind_failed", 400)
+        traceback.print_exc()
+        return err("bind_failed_on_commit", 400)
     return ok()
 
 
@@ -866,7 +869,8 @@ def link_profiles():
         return err("bind_conflict", 400)
     except Exception:
         db.rollback()
-        return err("bind_failed", 400)
+        traceback.print_exc()
+        return err("bind_failed_pre_commit", 400)
     try:
         db.commit()
     except IntegrityError:
@@ -874,7 +878,8 @@ def link_profiles():
         return err("bind_conflict", 400)
     except Exception:
         db.rollback()
-        return err("bind_failed", 400)
+        traceback.print_exc()
+        return err("bind_failed_on_commit", 400)
 
     return ok({"merged": True})
 
