@@ -1,6 +1,7 @@
 import os
 
 from flask import Blueprint, request, send_from_directory
+from sqlalchemy import and_, or_
 from werkzeug.utils import secure_filename
 
 from ..auth import is_admin, require_user
@@ -262,24 +263,36 @@ def _build_profile(tg_id: int):
     finished_ids = {m["id"] for m in finished_matches}
 
     # Profile stats must reflect actual final match events, not rating logs.
-    finished_events = (
+    goals = (
         db.query(Event)
         .filter(
             Event.match_id.in_(finished_ids),
-            Event.is_deleted.is_(False),
+            Event.event_type == "goal",
+            Event.scorer_tg_id == tg_id,
+            Event.is_deleted.is_not(True),
         )
-        .all()
+        .count()
     )
-    goals = 0
-    assists = 0
-    for event in finished_events:
-        if event.event_type == "goal" and int(event.scorer_tg_id or 0) == int(tg_id):
-            goals += 1
-        if event.event_type == "goal" and int(event.assist_tg_id or 0) == int(tg_id):
-            assists += 1
 
-    # MVP in profile = matches where player actually became top MVP.
-    mvp = sum(1 for item in finished_matches if ((item.get("mvp") or {}).get("top_tg_id") == tg_id))
+    assists = (
+        db.query(Event)
+        .filter(
+            Event.match_id.in_(finished_ids),
+            Event.is_deleted.is_not(True),
+            or_(
+                and_(Event.event_type == "goal", Event.assist_tg_id == tg_id),
+                and_(Event.event_type == "assist", or_(Event.assist_tg_id == tg_id, Event.scorer_tg_id == tg_id)),
+            ),
+        )
+        .count()
+    )
+
+    # MVP in profile = number of votes for this player in finished matches.
+    mvp = (
+        db.query(Feedback)
+        .filter(Feedback.match_id.in_(finished_ids), Feedback.mvp_vote_tg_id == tg_id)
+        .count()
+    )
     player_key = str(tg_id)
     player_state = state.players.get(player_key) if hasattr(state, "players") else None
     last_rating = (
