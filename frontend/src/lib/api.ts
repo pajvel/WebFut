@@ -554,6 +554,12 @@ export async function adminPatchUser(tg_id: number, payload: { custom_name?: str
   });
 }
 
+export async function adminDeleteUser(tg_id: number) {
+  return apiFetch<{ deleted: boolean; hard_deleted: boolean }>(`/admin/users/${tg_id}`, {
+    method: "DELETE"
+  });
+}
+
 export async function adminAddMatchMembers(matchId: number, members: Array<{ 
   tg_id: number; 
   role: string; 

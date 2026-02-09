@@ -11,5 +11,11 @@ export function resolveMediaUrl(path?: string | null) {
   }
   const base = API_BASE_URL.replace(/\/$/, "");
   const suffix = normalized.startsWith("/") ? normalized : `/${normalized}`;
+
+  // Already points to API prefix, avoid "/api/api/...".
+  if (base && (suffix === base || suffix.startsWith(`${base}/`))) {
+    return suffix;
+  }
+
   return `${base}${suffix}`;
 }

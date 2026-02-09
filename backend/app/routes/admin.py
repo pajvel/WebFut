@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import copy
+from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, request
 
@@ -296,6 +297,26 @@ def _rebind_interaction_logs(db, source_id: str, target_id: str) -> None:
             row.player_b = target_id
 
 
+def _drop_player_from_state(state: TeamModelState, player_id: str) -> None:
+    if player_id in state.players:
+        del state.players[player_id]
+    if player_id in state.base_ratings:
+        del state.base_ratings[player_id]
+    if player_id in state.tier_bonus:
+        del state.tier_bonus[player_id]
+
+    for venue, pairs in state.interactions.synergy.items():
+        filtered = {pair: val for pair, val in pairs.items() if player_id not in pair}
+        state.interactions.synergy[venue] = filtered
+    for venue, pairs in state.interactions.domination.items():
+        filtered = {
+            (a, b): val
+            for (a, b), val in pairs.items()
+            if a != player_id and b != player_id
+        }
+        state.interactions.domination[venue] = filtered
+
+
 def _log_match_deltas(db, match: Match, state: TeamModelState) -> None:
     team_match = build_team_model_match(db, match.id)
     venue = team_match.venue
@@ -367,10 +388,18 @@ def create_user():
     if not _require_admin():
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
-    tg_id = data.get("tg_id")
+    raw_tg_id = data.get("tg_id")
     name = data.get("name")
     if not name:
         return err("missing_name", 400)
+    tg_id = None
+    if "tg_id" in data and raw_tg_id not in (None, ""):
+        try:
+            tg_id = int(raw_tg_id)
+        except (TypeError, ValueError):
+            return err("invalid_tg_id", 400)
+        if tg_id == 0:
+            return err("invalid_tg_id", 400)
     db = get_db()
     if tg_id is None:
         tg_id = int(f"-{int(datetime.utcnow().timestamp())}")
@@ -398,6 +427,61 @@ def patch_user(tg_id: int):
     user.custom_avatar = data.get("custom_avatar", user.custom_avatar)
     db.commit()
     return ok()
+
+
+@bp.delete("/users/<int:tg_id>")
+def delete_user(tg_id: int):
+    if not _require_admin():
+        return err("forbidden", 403)
+
+    db = get_db()
+    user = db.query(User).filter_by(tg_id=tg_id).one_or_none()
+    if user is None:
+        return err("user_not_found", 404)
+
+    context_id = int(request.args.get("context_id", 1) or 1)
+    state = load_state(db, context_id)
+    player_id = str(tg_id)
+
+    # Always remove playable profile artifacts.
+    _drop_player_from_state(state, player_id)
+    db.query(RatingLog).filter_by(player_id=player_id).delete(synchronize_session=False)
+    db.query(InteractionLog).filter(
+        (InteractionLog.player_a == player_id) | (InteractionLog.player_b == player_id)
+    ).delete(synchronize_session=False)
+
+    tg_id_threshold = 100_000
+    hard_deleted = False
+    if tg_id < tg_id_threshold:
+        # Profile without TG account: fully delete.
+        db.query(MatchMember).filter_by(tg_id=tg_id).delete(synchronize_session=False)
+        db.query(Feedback).filter_by(tg_id=tg_id).delete(synchronize_session=False)
+        db.query(Feedback).filter_by(mvp_vote_tg_id=tg_id).update(
+            {"mvp_vote_tg_id": None},
+            synchronize_session=False,
+        )
+        db.query(PaymentRequest).filter_by(tg_id=tg_id).delete(synchronize_session=False)
+        db.query(PaymentStatus).filter_by(tg_id=tg_id).delete(synchronize_session=False)
+        db.query(PaymentInfo).filter_by(payer_tg_id=tg_id).update(
+            {"payer_tg_id": None},
+            synchronize_session=False,
+        )
+        db.query(UserSettings).filter_by(tg_id=tg_id).delete(synchronize_session=False)
+        db.delete(user)
+        hard_deleted = True
+    else:
+        # TG account remains for future re-binding.
+        user.custom_name = None
+        user.custom_avatar = None
+
+    save_state(db, context_id, state)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return err("user_has_dependencies", 400)
+
+    return ok({"deleted": True, "hard_deleted": hard_deleted})
 
 
 @bp.get("/state")
@@ -476,6 +560,8 @@ def bind_state_player():
         target_tg = int(target_id)
     except ValueError:
         return err("invalid_player_id", 400)
+    if target_tg <= 0:
+        return err("invalid_target_tg_id", 400)
     db = get_db()
     target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
     if target_user is None:
@@ -721,12 +807,8 @@ def link_profiles():
     except (TypeError, ValueError):
         return err("invalid_ids", 400)
 
-    tg_id_threshold = 100_000
-    # Manual profiles can be negative ids and small positive ids from seeds/imports.
-    if source_tg >= tg_id_threshold:
-        return err("manual_id_expected", 400)
-    if target_tg < tg_id_threshold:
-        return err("tg_id_expected", 400)
+    if source_tg == target_tg:
+        return err("same_ids", 400)
 
     target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
     source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()

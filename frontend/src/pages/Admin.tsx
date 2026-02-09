@@ -17,6 +17,7 @@ import {
   adminAddMatchMembers,
   adminBindStatePlayer,
   adminCreateUser,
+  adminDeleteUser,
   adminDeleteMatch,
   customTeams,
   deleteEvent,
@@ -954,7 +955,7 @@ export function Admin() {
         <div className="relative z-10 flex-1 overflow-y-auto p-4 lg:p-8">
           <div className="space-y-6"> {error ? <StatusCard title="Ошибка" message={error} onClose={() => setError(null)} /> : null}
 
-            {activeTab === "USERS" ? (() => {
+{activeTab === "USERS" ? (() => {
   const openEdit = (player: StatePlayer) => {
     const playerTgId = Number(player.player_id);
     const user = Number.isNaN(playerTgId) ? null : users.find((u) => u.tg_id === playerTgId) || null;
@@ -965,6 +966,29 @@ export function Admin() {
       bindTg: ""
     });
     setBindSearch("");
+  };
+
+  const handleDeleteUser = async (player: StatePlayer) => {
+    const playerTgId = Number(player.player_id);
+    if (!Number.isInteger(playerTgId)) {
+      setError("Некорректный ID игрока");
+      return;
+    }
+    const isTgProfile = playerTgId >= 100000;
+    const question = isTgProfile
+      ? "Удалить только игровой профиль? Telegram-аккаунт останется и его можно будет привязать снова."
+      : "Удалить профиль без Telegram полностью?";
+    if (!window.confirm(question)) return;
+    try {
+      setError(null);
+      await adminDeleteUser(playerTgId);
+      await Promise.all([loadUsers(), loadState()]);
+      if (editPlayer?.player_id === player.player_id) {
+        closeUserModal();
+      }
+    } catch (err) {
+      setError(formatApiError(err));
+    }
   };
 
   const SortButton = ({ field, label }: { field: typeof sortKey; label: string }) => {
@@ -1101,13 +1125,22 @@ export function Admin() {
                       {player.global_rating.toFixed(2)}
                     </td>
                     <td className="p-4 border-b border-[var(--border-main)] text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(player)}
-                        className="px-3 py-1 text-[10px] font-black uppercase italic tracking-tighter border-2 border-[var(--border-main)] text-[var(--text-main)] transition-all hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] hover:border-[var(--text-main)]"
-                      >
-                        ПРАВКА
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(player)}
+                          className="px-3 py-1 text-[10px] font-black uppercase italic tracking-tighter border-2 border-[var(--border-main)] text-[var(--text-main)] transition-all hover:bg-[var(--text-main)] hover:text-[var(--bg-page)] hover:border-[var(--text-main)]"
+                        >
+                          ПРАВКА
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUser(player)}
+                          className="px-3 py-1 text-[10px] font-black uppercase italic tracking-tighter border-2 border-red-500/70 text-red-500 transition-all hover:bg-red-500 hover:text-white"
+                        >
+                          УДАЛИТЬ
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1185,13 +1218,22 @@ export function Admin() {
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openEdit(player)}
-                  className="w-full py-3 text-xs font-black bg-[var(--bg-contrast)] text-[var(--text-contrast)] uppercase"
-                >
-                  РЕДАКТИРОВАТЬ
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(player)}
+                    className="w-full py-3 text-xs font-black bg-[var(--bg-contrast)] text-[var(--text-contrast)] uppercase"
+                  >
+                    РЕДАКТИРОВАТЬ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUser(player)}
+                    className="w-full py-3 text-xs font-black border-2 border-red-500/70 text-red-500 uppercase"
+                  >
+                    УДАЛИТЬ
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -2808,6 +2850,14 @@ export function Admin() {
                     if (!trimmedName) return;
                     setCreateSaving(true);
                     try {
+                      if (createValues.tgId) {
+                        const parsed = Number(createValues.tgId);
+                        if (!Number.isInteger(parsed) || parsed === 0) {
+                          setError("Некорректный TG ID");
+                          setCreateSaving(false);
+                          return;
+                        }
+                      }
                       const created = await adminCreateUser({
                         tg_id: createValues.tgId ? Number(createValues.tgId) : undefined,
                         name: trimmedName
@@ -2845,9 +2895,14 @@ export function Admin() {
                     await adminRebuildRatingLogs(1);
                     await adminRebuildState(1);
                     if (editValues.bindTg && editValues.bindTg !== editPlayer.player_id) {
+                      const parsedTg = Number(editValues.bindTg);
+                      if (!Number.isInteger(parsedTg) || parsedTg <= 0) {
+                        setError("Некорректный TG ID для привязки");
+                        return;
+                      }
                       await adminBindStatePlayer({
                         player_id: editPlayer.player_id,
-                        tg_id: Number(editValues.bindTg)
+                        tg_id: parsedTg
                       });
                     }
                     closeUserModal();
