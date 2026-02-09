@@ -85,6 +85,14 @@ html:not(.avatars-grayscale) img {
   filter: none !important;
 }
 
+html:not(.avatars-grayscale) .grayscale,
+html:not(.avatars-grayscale) .saturate-0,
+html:not(.avatars-grayscale) .contrast-125,
+html:not(.avatars-grayscale) .brightness-75,
+html:not(.avatars-grayscale) .brightness-110 {
+  filter: none !important;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
