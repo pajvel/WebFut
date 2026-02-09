@@ -26,6 +26,13 @@ export function FinishedMatch() {
   const [payerSelectOpen, setPayerSelectOpen] = useState(false);
   const [feedback, setFeedback] = useState<Record<string, string | string[]>>({});
   const [feedbackStatus, setFeedbackStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [comparisonPairsState, setComparisonPairsState] = useState<{
+    cmp_own?: number[];
+    cmp_opp?: number[];
+    cmp_cross?: number[];
+  }>({});
+  const [mvpHelpOpen, setMvpHelpOpen] = useState(false);
+  const [statsScope, setStatsScope] = useState<"all" | "A" | "B">("all");
 
   useEffect(() => {
     if (!matchId) return;
@@ -73,6 +80,16 @@ export function FinishedMatch() {
         if (comparisons.cmp_own) next.cmp_own = String(comparisons.cmp_own);
         if (comparisons.cmp_opp) next.cmp_opp = String(comparisons.cmp_opp);
         if (comparisons.cmp_cross) next.cmp_cross = String(comparisons.cmp_cross);
+        const pairs = (answers.comparison_pairs || {}) as Record<string, unknown>;
+        const toPair = (value: unknown) => {
+          if (!Array.isArray(value)) return undefined;
+          return value.map((v) => Number(v)).filter((v) => !Number.isNaN(v));
+        };
+        setComparisonPairsState({
+          cmp_own: toPair(pairs.cmp_own),
+          cmp_opp: toPair(pairs.cmp_opp),
+          cmp_cross: toPair(pairs.cmp_cross)
+        });
         const expandedPairs = (answers.expanded_pairs || {}) as Record<string, unknown>;
         if (expandedPairs.syn_team_a) next.syn_team_a = String(expandedPairs.syn_team_a);
         if (expandedPairs.syn_team_b) next.syn_team_b = String(expandedPairs.syn_team_b);
@@ -164,6 +181,59 @@ export function FinishedMatch() {
     return { hours, minutes };
   }, [data, timerTick]);
 
+  const mvpTrack = useMemo(() => {
+    const mvpVotes = data?.mvp?.votes || {};
+    const worstVotes = data?.mvp?.worst_votes || {};
+    const ids = new Set([...Object.keys(mvpVotes), ...Object.keys(worstVotes)]);
+    if (!ids.size) return { items: [], maxAbs: 1 };
+
+    const memberById = new Map(
+      (data?.members || []).map((member) => [String(member.tg_id), member])
+    );
+    const topId = data?.mvp?.top_tg_id ? String(data.mvp.top_tg_id) : null;
+    const raw = Array.from(ids).map((id) => {
+      const mvpCount = mvpVotes[id] || 0;
+      const worstCount = worstVotes[id] || 0;
+      const net = mvpCount - worstCount;
+      const member = memberById.get(id);
+      return {
+        id,
+        tg_id: Number(id),
+        name: member?.name || id,
+        avatar: member?.avatar || null,
+        mvpCount,
+        worstCount,
+        net,
+        isTopMvp: topId === id
+      };
+    });
+
+    const maxAbs = Math.max(1, ...raw.map((item) => Math.abs(item.net)));
+    const grouped = new Map<number, typeof raw>();
+    raw.forEach((item) => {
+      const list = grouped.get(item.net) || [];
+      list.push(item);
+      grouped.set(item.net, list);
+    });
+
+    const items: Array<
+      (typeof raw)[number] & { stackIndex: number; stackCount: number; groupHasTop: boolean }
+    > = [];
+    grouped.forEach((list) => {
+      const hasTop = list.some((entry) => entry.isTopMvp);
+      list.sort((a, b) => {
+        if (a.isTopMvp !== b.isTopMvp) return a.isTopMvp ? -1 : 1;
+        if (a.mvpCount !== b.mvpCount) return b.mvpCount - a.mvpCount;
+        return a.worstCount - b.worstCount;
+      });
+      list.forEach((item, index) => {
+        items.push({ ...item, stackIndex: index, stackCount: list.length, groupHasTop: hasTop });
+      });
+    });
+
+    return { items, maxAbs };
+  }, [data?.members, data?.mvp]);
+
   const teamNames = useMemo(() => {
     const current = data?.team_current?.current_teams as { name_a?: string; name_b?: string } | undefined;
     return {
@@ -183,10 +253,26 @@ export function FinishedMatch() {
       B: base.B.map(mapMember).filter(Boolean) as MatchMember[]
     };
   }, [data]);
+  const initials = (name?: string | null) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return "??";
+    const parts = trimmed.split(/\s+/);
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  };
+  const hasAvatar = (value?: string | null) => {
+    if (!value) return false;
+    const trimmed = value.trim();
+    return Boolean(trimmed && trimmed.toLowerCase() !== "null");
+  };
   const allPlayers = useMemo(
     () => [...teamMembers.A, ...teamMembers.B],
     [teamMembers]
   );
+  const memberById = (id?: number | null) =>
+    id ? allPlayers.find((player) => player.tg_id === id) || null : null;
   const myTeamKey = useMemo(() => {
     if (!myMember) return "A";
     const isA = teamMembers.A.some((member) => member.tg_id === myMember.tg_id);
@@ -212,6 +298,69 @@ export function FinishedMatch() {
       events: data.events.filter((ev) => ev.segment_id === seg.id)
     }));
   }, [data]);
+  const statLeaders = useMemo(() => {
+    const goals = new Map<number, number>();
+    const assists = new Map<number, number>();
+    const members = data?.members || [];
+    const teamMembersLocal = (() => {
+      if (!data) return members;
+      if (statsScope === "A") return teamMembers.A;
+      if (statsScope === "B") return teamMembers.B;
+      return members;
+    })();
+    const allowedIds = new Set(teamMembersLocal.map((member) => member.tg_id));
+    const byId = new Map(members.map((member) => [member.tg_id, member]));
+
+    (data?.events || []).forEach((event) => {
+      if (event.event_type === "own_goal") return;
+      if (event.scorer_tg_id && allowedIds.has(event.scorer_tg_id)) {
+        goals.set(event.scorer_tg_id, (goals.get(event.scorer_tg_id) || 0) + 1);
+      }
+      if (event.assist_tg_id && allowedIds.has(event.assist_tg_id)) {
+        assists.set(event.assist_tg_id, (assists.get(event.assist_tg_id) || 0) + 1);
+      }
+    });
+
+    const toEntries = () =>
+      teamMembersLocal.map((member) => ({
+        tg_id: member.tg_id,
+        name: member.name,
+        avatar: member.avatar,
+        goals: goals.get(member.tg_id) || 0,
+        assists: assists.get(member.tg_id) || 0
+      }));
+
+    const podium = (items: ReturnType<typeof toEntries>, key: "total" | "goals" | "assists") => {
+      const withTotals = items.map((item) => ({
+        ...item,
+        total: item.goals + item.assists
+      }));
+      withTotals.sort((a, b) => {
+        if (key === "total") {
+          if (b.total !== a.total) return b.total - a.total;
+          if (b.goals !== a.goals) return b.goals - a.goals;
+          return b.assists - a.assists;
+        }
+        if (key === "goals") {
+          if (b.goals !== a.goals) return b.goals - a.goals;
+          if (b.assists !== a.assists) return b.assists - a.assists;
+          return b.total - a.total;
+        }
+        if (b.assists !== a.assists) return b.assists - a.assists;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return b.total - a.total;
+      });
+      return withTotals.slice(0, 3);
+    };
+
+    const items = toEntries();
+    return {
+      byId,
+      total: podium(items, "total"),
+      goals: podium(items, "goals"),
+      assists: podium(items, "assists")
+    };
+  }, [data, statsScope, teamMembers]);
 
   const seedBase = Number(matchId || 0) || 1;
   const pickIndex = (length: number, seed: number) => {
@@ -227,6 +376,12 @@ export function FinishedMatch() {
       second = pool[pickIndex(pool.length, seed + 23)];
     }
     return [first, second] as const;
+  };
+  const pickCrossPair = (leftPool: MatchMember[], rightPool: MatchMember[], seed: number) => {
+    if (!leftPool.length || !rightPool.length) return [null, null] as const;
+    const left = leftPool[pickIndex(leftPool.length, seed)];
+    const right = rightPool[pickIndex(rightPool.length, seed + 11)];
+    return [left, right] as const;
   };
   const roleQuestion = useMemo(() => {
     const savedRole = typeof feedback.role_type === "string" ? feedback.role_type : null;
@@ -249,14 +404,21 @@ export function FinishedMatch() {
       const parsed = Number(raw);
       return Number.isNaN(parsed) ? null : parsed;
     };
-    const rolePlayer = toNumber(feedback.role_player);
-    const roleType = roleQuestion.role;
     const pairToIds = (pair: readonly (MatchMember | null)[]) =>
       pair[0] && pair[1] ? [pair[0].tg_id, pair[1].tg_id] : [];
-    const comparisonPairs = {
+    const normalizePair = (pair?: number[]) =>
+      pair && pair.length === 2 && pair[0] !== pair[1] ? pair : null;
+    const rolePlayer = toNumber(feedback.role_player);
+    const roleType = roleQuestion.role;
+    const fallbackPairs = {
       cmp_own: pairToIds(pickPair(myTeamSelectable, seedBase + 0 * 13)),
       cmp_opp: pairToIds(pickPair(oppTeam, seedBase + 1 * 13)),
-      cmp_cross: pairToIds(pickPair(allPlayersSelectable, seedBase + 2 * 13))
+      cmp_cross: pairToIds(pickCrossPair(myTeamSelectable, oppTeam, seedBase + 2 * 13))
+    };
+    const comparisonPairs = {
+      cmp_own: normalizePair(comparisonPairsState.cmp_own) ?? fallbackPairs.cmp_own,
+      cmp_opp: normalizePair(comparisonPairsState.cmp_opp) ?? fallbackPairs.cmp_opp,
+      cmp_cross: normalizePair(comparisonPairsState.cmp_cross) ?? fallbackPairs.cmp_cross
     };
     return {
       mvp_vote_tg_id: toNumber(feedback.best),
@@ -307,13 +469,13 @@ export function FinishedMatch() {
           <div className="text-center">{t("Счет")}</div>
           <div className="text-right">{teamNames.B}</div>
         </div>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+          <div className="space-y-2 min-w-0">
             {teamMembers.A.map((member) => (
               <Link
                 key={member.tg_id}
                 to={`/matches/${matchId}/players/${member.tg_id}`}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 min-w-0"
               >
                 <Avatar className="h-8 w-8 border border-border">
                   {member.avatar ? <AvatarImage src={resolveMediaUrl(member.avatar)} /> : null}
@@ -334,12 +496,12 @@ export function FinishedMatch() {
               </div>
             ) : null}
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             {teamMembers.B.map((member) => (
               <Link
                 key={member.tg_id}
                 to={`/matches/${matchId}/players/${member.tg_id}`}
-                className="flex items-center gap-2 justify-end"
+                className="flex items-center gap-2 justify-end min-w-0"
               >
                 <div className="truncate text-sm font-medium text-right">{member.name}</div>
                 <Avatar className="h-8 w-8 border border-border">
@@ -367,26 +529,136 @@ export function FinishedMatch() {
     </Card>
   );
 
+  const playerName = (tgId?: number | null) => {
+    if (!tgId) return null;
+    return data?.members.find((m) => m.tg_id === tgId)?.name || String(tgId);
+  };
+  const playerById = (tgId?: number | null) => {
+    if (!tgId) return null;
+    return data?.members.find((m) => m.tg_id === tgId) || null;
+  };
+  const startScoreForSegment = (segNo: number) => {
+    let a = 0;
+    let b = 0;
+    for (const seg of data?.segments || []) {
+      if (seg.seg_no >= segNo) break;
+      a += seg.score_a || 0;
+      b += seg.score_b || 0;
+    }
+    return { A: a, B: b };
+  };
+
   const eventsTimeline = (
     <div className="space-y-3">
       {eventsBySegment.map((seg) => (
         <Card key={seg.id}>
-          <CardContent className="space-y-2">
-            <div className="text-sm font-semibold">
-              {t("Отрезок")} {seg.seg_no}
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">
+                {t("Отрезок")} {seg.seg_no}
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1 text-xs font-semibold">
+                <span>{teamNames.A}</span>
+                <span className="text-muted-foreground">•</span>
+                <span>{seg.score_a}</span>
+                <span className="text-muted-foreground">:</span>
+                <span>{seg.score_b}</span>
+                <span className="text-muted-foreground">•</span>
+                <span>{teamNames.B}</span>
+              </div>
             </div>
             <div className="text-xs text-muted-foreground">
-              {seg.score_a}:{seg.score_b} | {seg.is_butt_game ? t("Игра на жопу") : t("Обычный")}
+              {seg.is_butt_game ? t("Игра на жопу") : t("Обычный")}
             </div>
-            <div className="space-y-1 text-sm">
+            <div className="space-y-2 text-sm">
               {seg.events.length === 0 ? (
                 <div className="text-xs text-muted-foreground">{t("Событий нет")}</div>
               ) : (
-                seg.events.map((ev) => (
-                  <div key={ev.id}>
-                    {ev.event_type === "own_goal" ? t("Автогол") : t("Гол")} — {t("Команда")} {ev.team}
-                  </div>
-                ))
+                seg.events.map((ev, index) => {
+                  const baseScore = startScoreForSegment(seg.seg_no);
+                  const running = { ...baseScore };
+                  for (let i = 0; i <= index; i += 1) {
+                    const e = seg.events[i];
+                    const own = e.event_type === "own_goal";
+                    const team =
+                      own ? (e.team === "A" ? "B" : "A") : e.team;
+                    if (team === "A") running.A += 1;
+                    if (team === "B") running.B += 1;
+                  }
+                  const isOwnGoal = ev.event_type === "own_goal";
+                  const displayTeam = isOwnGoal ? (ev.team === "A" ? "B" : "A") : ev.team;
+                  const scorer = playerName(ev.scorer_tg_id);
+                  const assist = playerName(ev.assist_tg_id);
+                  const scorerMember = playerById(ev.scorer_tg_id);
+                  const assistMember = playerById(ev.assist_tg_id);
+                  return (
+                    <div
+                      key={ev.id}
+                      className="grid items-center gap-3 rounded-xl border border-border/60 bg-card/70 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="rounded-full border border-border/60 bg-card/80 px-2 py-0.5 text-[11px] font-semibold">
+                          {isOwnGoal ? t("АГ") : t("ГОЛ")}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground truncate">
+                          {teamNames[displayTeam as "A" | "B"] || t("Команда")}
+                        </span>
+                        <span className="text-[11px] font-semibold text-foreground">
+                          {running.A}:{running.B}
+                        </span>
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {scorerMember ? (
+                            <Link
+                              to={`/matches/${matchId}/players/${scorerMember.tg_id}`}
+                              className="shrink-0"
+                            >
+                              <Avatar className="h-7 w-7 border border-border">
+                                {scorerMember.avatar ? (
+                                  <AvatarImage src={resolveMediaUrl(scorerMember.avatar)} />
+                                ) : null}
+                                <AvatarFallback>
+                                  {scorerMember.name?.slice(0, 2).toUpperCase() || "??"}
+                                </AvatarFallback>
+                              </Avatar>
+                            </Link>
+                          ) : (
+                            <Avatar className="h-7 w-7 border border-border">
+                              <AvatarFallback>??</AvatarFallback>
+                            </Avatar>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-[11px] text-muted-foreground">{t("Гол")}</div>
+                            <div className="truncate font-medium">{scorer ? scorer : t("Неизвестный")}</div>
+                          </div>
+                        </div>
+                        {assistMember ? (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Link
+                              to={`/matches/${matchId}/players/${assistMember.tg_id}`}
+                              className="shrink-0"
+                            >
+                              <Avatar className="h-7 w-7 border border-border">
+                                {assistMember.avatar ? (
+                                  <AvatarImage src={resolveMediaUrl(assistMember.avatar)} />
+                                ) : null}
+                                <AvatarFallback>
+                                  {assistMember.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            </Link>
+                            <div className="min-w-0">
+                              <div className="text-[11px] text-muted-foreground">{t("Ассист")}</div>
+                              <div className="truncate text-sm">{assist}</div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div />
+                    </div>
+                  );
+                })
               )}
             </div>
           </CardContent>
@@ -399,28 +671,20 @@ export function FinishedMatch() {
     <div className="space-y-6">
       {isPlayer ? (
         <Tabs defaultValue="summary">
-          <TabsList className="w-full justify-between">
-            <TabsTrigger value="summary">{t("Итог")}</TabsTrigger>
-            <TabsTrigger value="events">{t("События")}</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="events" className="justify-center min-w-0 px-2 text-xs sm:text-sm truncate">
+              {t("События")}
+            </TabsTrigger>
+            <TabsTrigger value="summary" className="justify-center min-w-0 px-2 text-xs sm:text-sm truncate">
+              {t("Итог")}
+            </TabsTrigger>
+            <TabsTrigger value="best" className="justify-center min-w-0 px-2 text-xs sm:text-sm truncate">
+              {t("Лучшие")}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="summary">
             {summary}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardContent className="space-y-2">
-                  <div className="text-sm font-semibold">MVP</div>
-                  <div className="text-xs text-muted-foreground">
-                    {t("Голосование завершится через")} {mvpCountdown?.hours ?? 0}ч{" "}
-                    {mvpCountdown?.minutes ?? 0}м
-                  </div>
-                  <div className="text-sm">
-                    {t("Текущий лидер")}:{" "}
-                    {data.mvp?.top_tg_id
-                      ? data.members.find((m) => m.tg_id === data.mvp?.top_tg_id)?.name || data.mvp?.top_tg_id
-                      : t("нет")}
-                  </div>
-                </CardContent>
-              </Card>
               <Card>
                 <CardContent className="space-y-2">
                   <div className="text-sm font-semibold">{t("Плательщик")}</div>
@@ -573,12 +837,17 @@ export function FinishedMatch() {
                         <Button
                           key={`best-${player.tg_id}`}
                           size="sm"
+                          className="gap-2"
                           variant={feedback.best === String(player.tg_id) ? "default" : "outline"}
                           onClick={() =>
                             setFeedback((prev) => ({ ...prev, best: String(player.tg_id) }))
                           }
                         >
-                          {player.name}
+                          <Avatar className="h-6 w-6 border border-border">
+                            {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                            <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{player.name}</span>
                         </Button>
                       ))}
                     </div>
@@ -592,12 +861,17 @@ export function FinishedMatch() {
                         <Button
                           key={`worst-${player.tg_id}`}
                           size="sm"
+                          className="gap-2"
                           variant={feedback.worst === String(player.tg_id) ? "default" : "outline"}
                           onClick={() =>
                             setFeedback((prev) => ({ ...prev, worst: String(player.tg_id) }))
                           }
                         >
-                          {player.name}
+                          <Avatar className="h-6 w-6 border border-border">
+                            {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                            <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{player.name}</span>
                         </Button>
                       ))}
                     </div>
@@ -607,17 +881,35 @@ export function FinishedMatch() {
                       {
                         id: "cmp_own",
                         label: t("Сравнение (своя команда)"),
-                        pair: pickPair(myTeamSelectable, seedBase + 0 * 13)
+                        pair:
+                          comparisonPairsState.cmp_own?.length === 2
+                            ? ([
+                                memberById(comparisonPairsState.cmp_own[0]),
+                                memberById(comparisonPairsState.cmp_own[1])
+                              ] as const)
+                            : pickPair(myTeamSelectable, seedBase + 0 * 13)
                       },
                       {
                         id: "cmp_opp",
                         label: t("Сравнение (чужая команда)"),
-                        pair: pickPair(oppTeam, seedBase + 1 * 13)
+                        pair:
+                          comparisonPairsState.cmp_opp?.length === 2
+                            ? ([
+                                memberById(comparisonPairsState.cmp_opp[0]),
+                                memberById(comparisonPairsState.cmp_opp[1])
+                              ] as const)
+                            : pickPair(oppTeam, seedBase + 1 * 13)
                       },
                       {
                         id: "cmp_cross",
                         label: t("Сравнение (своя vs чужая)"),
-                        pair: pickPair(allPlayersSelectable, seedBase + 2 * 13)
+                        pair:
+                          comparisonPairsState.cmp_cross?.length === 2
+                            ? ([
+                                memberById(comparisonPairsState.cmp_cross[0]),
+                                memberById(comparisonPairsState.cmp_cross[1])
+                              ] as const)
+                            : pickCrossPair(myTeamSelectable, oppTeam, seedBase + 2 * 13)
                       }
                     ].map((cmp) => {
                       const [left, right] = cmp.pair;
@@ -631,7 +923,7 @@ export function FinishedMatch() {
                               <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
                                 <Button
                                   size="sm"
-                                  className="min-w-0 w-full truncate"
+                                  className="min-w-0 w-full truncate gap-2"
                                   variant={
                                     feedback[cmp.id] === String(left.tg_id) ? "default" : "outline"
                                   }
@@ -642,12 +934,16 @@ export function FinishedMatch() {
                                     }))
                                   }
                                 >
-                                  {left.name}
+                                  <Avatar className="h-6 w-6 border border-border">
+                                    {left.avatar ? <AvatarImage src={resolveMediaUrl(left.avatar)} /> : null}
+                                    <AvatarFallback>{left.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="truncate">{left.name}</span>
                                 </Button>
                                 <span className="text-center text-xs text-muted-foreground">vs</span>
                                 <Button
                                   size="sm"
-                                  className="min-w-0 w-full truncate"
+                                  className="min-w-0 w-full truncate gap-2"
                                   variant={
                                     feedback[cmp.id] === String(right.tg_id) ? "default" : "outline"
                                   }
@@ -658,7 +954,11 @@ export function FinishedMatch() {
                                     }))
                                   }
                                 >
-                                  {right.name}
+                                  <Avatar className="h-6 w-6 border border-border">
+                                    {right.avatar ? <AvatarImage src={resolveMediaUrl(right.avatar)} /> : null}
+                                    <AvatarFallback>{right.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="truncate">{right.name}</span>
                                 </Button>
                               </div>
                             ) : (
@@ -690,6 +990,7 @@ export function FinishedMatch() {
                               <Button
                                 key={`syn-team-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={isSelected ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => {
@@ -705,7 +1006,11 @@ export function FinishedMatch() {
                                   })
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             );
                           })}
@@ -730,6 +1035,7 @@ export function FinishedMatch() {
                               <Button
                                 key={`syn-opp-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={isSelected ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => {
@@ -745,7 +1051,11 @@ export function FinishedMatch() {
                                   })
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             );
                           })}
@@ -769,12 +1079,17 @@ export function FinishedMatch() {
                               <Button
                                 key={`dom-my-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={feedback.dom_my === String(player.tg_id) ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => ({ ...prev, dom_my: String(player.tg_id) }))
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             ))}
                           </div>
@@ -786,6 +1101,7 @@ export function FinishedMatch() {
                               <Button
                                 key={`dom-my-target-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={feedback.dom_opp_target === String(player.tg_id) ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => ({
@@ -794,7 +1110,11 @@ export function FinishedMatch() {
                                   }))
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             ))}
                           </div>
@@ -815,12 +1135,17 @@ export function FinishedMatch() {
                               <Button
                                 key={`dom-opp-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={feedback.dom_opp === String(player.tg_id) ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => ({ ...prev, dom_opp: String(player.tg_id) }))
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             ))}
                           </div>
@@ -832,6 +1157,7 @@ export function FinishedMatch() {
                               <Button
                                 key={`dom-opp-target-${player.tg_id}`}
                                 size="sm"
+                                className="gap-2"
                                 variant={feedback.dom_my_target === String(player.tg_id) ? "default" : "outline"}
                                 onClick={() =>
                                   setFeedback((prev) => ({
@@ -840,7 +1166,11 @@ export function FinishedMatch() {
                                   }))
                                 }
                               >
-                                {player.name}
+                                <Avatar className="h-6 w-6 border border-border">
+                                  {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                  <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{player.name}</span>
                               </Button>
                             ))}
                           </div>
@@ -855,6 +1185,7 @@ export function FinishedMatch() {
                             <Button
                               key={`role-${player.tg_id}`}
                               size="sm"
+                              className="gap-2"
                               variant={feedback.role_player === String(player.tg_id) ? "default" : "outline"}
                               onClick={() =>
                                 setFeedback((prev) => ({
@@ -864,7 +1195,11 @@ export function FinishedMatch() {
                                 }))
                               }
                             >
-                              {player.name}
+                              <Avatar className="h-6 w-6 border border-border">
+                                {player.avatar ? <AvatarImage src={resolveMediaUrl(player.avatar)} /> : null}
+                                <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <span className="truncate">{player.name}</span>
                             </Button>
                           ))}
                         </div>
@@ -899,6 +1234,243 @@ export function FinishedMatch() {
             </Card>
           </TabsContent>
           <TabsContent value="events">{eventsTimeline}</TabsContent>
+          <TabsContent value="best">
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold">{t("MVP")}</div>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-7 w-7 rounded-full"
+                      aria-label={t("Как считается MVP")}
+                      onClick={() => setMvpHelpOpen(true)}
+                    >
+                      ?
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {t("Голосование завершится через")} {mvpCountdown?.hours ?? 0}ч{" "}
+                    {mvpCountdown?.minutes ?? 0}м
+                  </div>
+                  {(() => {
+                    const numberHeight = 12;
+                    const numberMargin = 4;
+                    const numberTotal = numberHeight + numberMargin;
+                    const belowGap = 26;
+                    const baseOffset = 30;
+                    const lineY = 40;
+                    const avatarSize = 24;
+                    const topLift = 6;
+                    const baseHeight = 80;
+                    let maxOverflow = 0;
+
+                    mvpTrack.items.forEach((item) => {
+                      const isGroupLeader = item.groupHasTop ? item.isTopMvp : item.stackIndex === 0;
+                      const nonLeaderIndex = item.groupHasTop
+                        ? item.isTopMvp
+                          ? -1
+                          : item.stackIndex - 1
+                        : item.stackIndex - 1;
+                      const translateY = isGroupLeader
+                        ? item.isTopMvp
+                          ? -topLift
+                          : 0
+                        : baseOffset + numberTotal + nonLeaderIndex * belowGap;
+                      const iconBottom = lineY + avatarSize / 2 + translateY;
+                      maxOverflow = Math.max(maxOverflow, iconBottom - baseHeight);
+                    });
+
+                    const containerHeight = baseHeight;
+                    const labelMarginTop = Math.max(0, maxOverflow) + 5;
+
+                    return (
+                      <>
+                        <div className="relative mt-2" style={{ height: containerHeight, overflow: "visible" }}>
+                          <div className="absolute left-0 right-0 top-1/2 h-px bg-border" />
+                          <div className="absolute left-1/2 top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-border" />
+                          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 translate-y-2 text-[10px] text-muted-foreground">
+                            0
+                          </div>
+                          {mvpTrack.items.map((item) => {
+                            const position = 50 + (item.net / mvpTrack.maxAbs) * 45;
+                            const clamped = Math.min(95, Math.max(5, position));
+                            const isGroupLeader = item.groupHasTop ? item.isTopMvp : item.stackIndex === 0;
+                            const showNumber = isGroupLeader;
+                            const nonLeaderIndex = item.groupHasTop
+                              ? item.isTopMvp
+                                ? -1
+                                : item.stackIndex - 1
+                              : item.stackIndex - 1;
+                            const belowOffset =
+                              nonLeaderIndex >= 0 ? baseOffset + numberTotal + nonLeaderIndex * belowGap : 0;
+                            const avatarTranslate = isGroupLeader
+                              ? item.isTopMvp
+                                ? `translate(-50%, calc(-50% - ${topLift}px))`
+                                : "translate(-50%, -50%)"
+                              : `translate(-50%, calc(-50% + ${belowOffset}px))`;
+                            return (
+                              <div key={item.id} className="absolute top-1/2" style={{ left: `${clamped}%` }}>
+                                <div
+                                  className="relative"
+                                  style={{
+                                    transform: avatarTranslate
+                                  }}
+                                >
+                                  {item.isTopMvp ? (
+                                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-xs">👑</div>
+                                  ) : null}
+                                  <Link
+                                    to={`/matches/${matchId}/players/${item.tg_id}`}
+                                    className="block"
+                                  >
+                                    <Avatar className="h-6 w-6 border border-border">
+                                      {item.avatar ? (
+                                        <AvatarImage src={resolveMediaUrl(item.avatar)} />
+                                      ) : null}
+                                      <AvatarFallback>
+                                        {item.name.slice(0, 2).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  </Link>
+                                  {showNumber ? (
+                                    <div
+                                      className="absolute left-1/2 top-full -translate-x-1/2 text-[10px] font-semibold leading-none"
+                                      style={{
+                                        marginTop: numberMargin,
+                                        height: numberHeight,
+                                        lineHeight: `${numberHeight}px`
+                                      }}
+                                    >
+                                      {item.net > 0 ? `+${item.net}` : item.net}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {mvpTrack.items.length ? (
+                          <div className="text-xs text-muted-foreground" style={{ marginTop: labelMarginTop }}>
+                            {t("Текущий лидер")}:{" "}
+                            {data.mvp?.top_tg_id
+                              ? data.members.find((m) => m.tg_id === data.mvp?.top_tg_id)?.name || data.mvp?.top_tg_id
+                              : t("нет")}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground" style={{ marginTop: labelMarginTop }}>
+                            {t("Пока нет голосов")}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key: "total", title: t("Гол + пас"), data: statLeaders.total },
+                  { key: "goals", title: t("Голы"), data: statLeaders.goals },
+                  { key: "assists", title: t("Ассисты"), data: statLeaders.assists }
+                ].map((block) => (
+                  <Card key={block.key}>
+                    <CardContent className="space-y-3">
+                      <div className="text-sm font-semibold">{block.title}</div>
+                      {block.data.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">{t("Пока нет данных")}</div>
+                      ) : (
+                        <div className="flex items-end justify-between gap-2">
+                          {(() => {
+                            const first = block.data[0];
+                            const second = block.data[1];
+                            const third = block.data[2];
+                            const getValue = (entry: typeof first | undefined) => {
+                              if (!entry) return "0";
+                              if (block.key === "total") return String(entry.goals + entry.assists);
+                              if (block.key === "goals") return String(entry.goals);
+                              return String(entry.assists);
+                            };
+                            const slots = [
+                              { entry: second, place: 2, height: "h-14" },
+                              { entry: first, place: 1, height: "h-20" },
+                              { entry: third, place: 3, height: "h-12" }
+                            ];
+                            return slots.map((slot) => (
+                              <div key={`${block.key}-podium-${slot.place}`} className="flex min-w-0 flex-1 flex-col items-center">
+                                {slot.entry ? (
+                                  <Link
+                                    to={`/matches/${matchId}/players/${slot.entry.tg_id}`}
+                                    className="block"
+                                  >
+                                    {hasAvatar(slot.entry.avatar) ? (
+                                      <Avatar className="h-8 w-8 border border-border">
+                                        <AvatarImage src={resolveMediaUrl(slot.entry.avatar)} />
+                                        <AvatarFallback delayMs={0}>
+                                          {initials(slot.entry.name || String(slot.entry.tg_id))}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    ) : (
+                                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted text-[11px] font-semibold uppercase leading-none">
+                                        {initials(slot.entry.name || String(slot.entry.tg_id))}
+                                      </div>
+                                    )}
+                                  </Link>
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted text-[11px] font-semibold uppercase leading-none">
+                                    --
+                                  </div>
+                                )}
+                                <div className="mt-1 text-[11px] font-semibold text-foreground">
+                                  {getValue(slot.entry)}
+                                </div>
+                                <div className={`mt-2 w-full rounded-t-lg border border-border/60 bg-card/70 ${slot.height}`} />
+                                <div className="mt-2 flex h-5 w-5 items-center justify-center rounded-full border border-border/70 text-[10px] font-semibold">
+                                  {slot.place}
+                                </div>
+                                <div className="mt-1 h-4 w-full" />
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 items-center gap-2">
+                <div className="flex justify-start">
+                  <Button
+                    size="sm"
+                    variant={statsScope === "A" ? "default" : "outline"}
+                    onClick={() => setStatsScope("A")}
+                    className="max-w-full truncate"
+                  >
+                    {teamNames.A}
+                  </Button>
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    size="sm"
+                    variant={statsScope === "all" ? "default" : "outline"}
+                    onClick={() => setStatsScope("all")}
+                  >
+                    {t("Общая")}
+                  </Button>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant={statsScope === "B" ? "default" : "outline"}
+                    onClick={() => setStatsScope("B")}
+                    className="max-w-full truncate"
+                  >
+                    {teamNames.B}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
         </Tabs>
       ) : (
         <div className="space-y-4">
@@ -1013,6 +1585,18 @@ export function FinishedMatch() {
                 </Button>
               </div>
             ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={mvpHelpOpen} onOpenChange={setMvpHelpOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("Как считается MVP")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div>{t("Главное — голоса за MVP. У кого их больше, тот и лидер.")}</div>
+            <div>{t("Если голоса равны, сравниваются полезные действия: голы + ассисты.")}</div>
+            <div>{t("Если и это равно, выше тот, у кого больше голов.")}</div>
           </div>
         </DialogContent>
       </Dialog>

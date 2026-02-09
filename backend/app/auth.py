@@ -27,7 +27,7 @@ def _check_telegram_init_data(init_data: str, bot_token: str) -> dict:
         except ValueError:
             raise ValueError("auth_date_invalid")
         
-        if time.time() - auth_timestamp > 24 * 60 * 60:  # 24 часа
+        if time.time() - auth_timestamp > 7 * 24 * 60 * 60:  # 7 дней
             raise ValueError("auth_date_expired")
 
     data_check = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))

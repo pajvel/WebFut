@@ -116,6 +116,16 @@ def build_team_model_match(db, match_id: int) -> TeamMatch:
             continue
         if not ev.scorer_tg_id and ev.event_type == "goal":
             continue
+        # Count assists stored on goal events as separate assist events for rating.
+        if ev.event_type == "goal" and ev.assist_tg_id:
+            events.append(
+                TeamMatchEvent(
+                    player=str(ev.assist_tg_id),
+                    team=ev.team,
+                    event_type="assist",
+                    segment_index=seg_index_by_id.get(ev.segment_id, 0),
+                )
+            )
         events.append(
             TeamMatchEvent(
                 player=str(ev.scorer_tg_id if ev.event_type == "goal" else ev.assist_tg_id),

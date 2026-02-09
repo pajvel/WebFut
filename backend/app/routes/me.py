@@ -6,7 +6,20 @@ from werkzeug.utils import secure_filename
 from ..auth import is_admin, require_user
 from ..config import Config
 from ..db import get_db
-from ..models import Event, Feedback, Match, MatchMember, Segment, TeamCurrent, TeamVariant, User, UserSettings
+from ..models import (
+    Event,
+    Feedback,
+    Match,
+    MatchMember,
+    RatingLog,
+    Segment,
+    TeamCurrent,
+    TeamVariant,
+    User,
+    UserSettings,
+)
+from team_model.team_model import Config as TeamConfig
+from ..services.model_state import load_state
 from ..utils import err, ok
 
 bp = Blueprint("me", __name__)
@@ -132,6 +145,7 @@ def get_user_profile(tg_id: int):
 
 def _build_profile(tg_id: int):
     db = get_db()
+    state = load_state(db, 1)
     memberships = (
         db.query(MatchMember, Match)
         .join(Match, MatchMember.match_id == Match.id)
@@ -216,6 +230,23 @@ def _build_profile(tg_id: int):
         .count()
     )
     mvp = db.query(Feedback).filter(Feedback.mvp_vote_tg_id == tg_id).count()
+    last_rating = (
+        db.query(RatingLog)
+        .filter_by(player_id=str(tg_id))
+        .order_by(RatingLog.created_at.desc())
+        .first()
+    )
+    if last_rating:
+        global_rating = float(last_rating.post_global)
+        last_delta = float(last_rating.delta)
+        last_match_id = last_rating.match_id
+        last_updated_at = last_rating.created_at.isoformat()
+    else:
+        base_rating = state.base_ratings.get(str(tg_id)) if hasattr(state, "base_ratings") else None
+        global_rating = float(base_rating) if base_rating is not None else float(TeamConfig().global_start_rating)
+        last_delta = None
+        last_match_id = None
+        last_updated_at = None
 
     wins = 0
     losses = 0
@@ -255,6 +286,12 @@ def _build_profile(tg_id: int):
             losses += 1 if score_b < score_a else 0
 
     return {
+        "rating": {
+            "global": global_rating,
+            "last_delta": last_delta,
+            "last_match_id": last_match_id,
+            "last_updated_at": last_updated_at,
+        },
         "stats": {
             "matches": len(finished_matches),
             "wins": wins,
@@ -265,3 +302,98 @@ def _build_profile(tg_id: int):
         },
         "history": history,
     }
+
+
+@bp.get("/me/leaderboard")
+def get_leaderboard():
+    require_user()
+    db = get_db()
+    state = load_state(db, 1)
+    base_ratings = getattr(state, "base_ratings", {}) or {}
+
+    finished_matches = db.query(Match).filter(Match.status == "finished").all()
+    stats: dict[str, dict[str, int]] = {}
+    for match in finished_matches:
+        current = db.query(TeamCurrent).filter_by(match_id=match.id).one_or_none()
+        if current:
+            teams = current.current_teams_json
+        else:
+            recommended = (
+                db.query(TeamVariant)
+                .filter_by(match_id=match.id, is_recommended=True)
+                .order_by(TeamVariant.variant_no.asc())
+                .first()
+            )
+            teams = recommended.teams_json if recommended else {"A": [], "B": []}
+
+        team_a_ids = [str(tg_id) for tg_id in teams.get("A", []) if str(tg_id).isdigit()]
+        team_b_ids = [str(tg_id) for tg_id in teams.get("B", []) if str(tg_id).isdigit()]
+
+        segments = db.query(Segment).filter_by(match_id=match.id).all()
+        score_a = sum(seg.score_a for seg in segments)
+        score_b = sum(seg.score_b for seg in segments)
+        if score_a == score_b:
+            winner = None
+        else:
+            winner = "A" if score_a > score_b else "B"
+
+        for player_id in team_a_ids:
+            entry = stats.setdefault(player_id, {"games": 0, "wins": 0, "losses": 0})
+            entry["games"] += 1
+            if winner == "A":
+                entry["wins"] += 1
+            elif winner == "B":
+                entry["losses"] += 1
+
+        for player_id in team_b_ids:
+            entry = stats.setdefault(player_id, {"games": 0, "wins": 0, "losses": 0})
+            entry["games"] += 1
+            if winner == "B":
+                entry["wins"] += 1
+            elif winner == "A":
+                entry["losses"] += 1
+
+    rating_by_player: dict[str, RatingLog] = {}
+    for row in db.query(RatingLog).order_by(RatingLog.created_at.desc()).all():
+        if row.player_id not in rating_by_player:
+            rating_by_player[row.player_id] = row
+
+    users = db.query(User).all()
+    user_map = {str(user.tg_id): user for user in users}
+    player_ids = set(stats.keys()) | set(rating_by_player.keys())
+    tg_id_threshold = 100_000
+
+    entries = []
+    for player_id in player_ids:
+        user = user_map.get(player_id)
+        last_rating = rating_by_player.get(player_id)
+        global_rating = (
+            float(last_rating.post_global)
+            if last_rating
+            else float(base_ratings.get(player_id, TeamConfig().global_start_rating))
+        )
+        last_delta = float(last_rating.delta) if last_rating else None
+        entry_stats = stats.get(player_id, {"games": 0, "wins": 0, "losses": 0})
+        games = entry_stats["games"]
+        has_tg = user is not None and user.tg_id >= tg_id_threshold
+        if has_tg:
+            if games < 1:
+                continue
+        else:
+            if games < 3:
+                continue
+        entries.append(
+            {
+                "tg_id": int(player_id) if player_id.isdigit() else None,
+                "name": (user.custom_name or user.tg_name) if user else player_id,
+                "avatar": (user.custom_avatar or user.tg_avatar) if user else None,
+                "games": games,
+                "wins": entry_stats["wins"],
+                "losses": entry_stats["losses"],
+                "rating": global_rating,
+                "last_delta": last_delta,
+            }
+        )
+
+    entries.sort(key=lambda item: (item["rating"], item["games"]), reverse=True)
+    return ok({"items": entries})

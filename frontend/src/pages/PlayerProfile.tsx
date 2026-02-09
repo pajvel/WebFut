@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { getMatch, getUserProfile } from "../lib/api";
-import type { MatchDetail, ProfileHistoryItem, ProfileStats } from "../lib/types";
+import type { MatchDetail, ProfileHistoryItem, ProfileRating, ProfileStats } from "../lib/types";
 import { MatchCard } from "../components/MatchCard";
 import { StatusCard } from "../components/StatusCard";
 import { Card, CardContent } from "../components/ui/card";
@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { resolveMediaUrl } from "../lib/media";
 import { formatApiError } from "../lib/errors";
 import { useMatText } from "../lib/mode18";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 const emptyStats: ProfileStats = {
   matches: 0,
@@ -25,6 +26,7 @@ export function PlayerProfile() {
   const navigate = useNavigate();
   const t = useMatText();
   const [stats, setStats] = useState<ProfileStats>(emptyStats);
+  const [rating, setRating] = useState<ProfileRating | null>(null);
   const [history, setHistory] = useState<ProfileHistoryItem[]>([]);
   const [player, setPlayer] = useState<{ name: string; avatar?: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export function PlayerProfile() {
     getUserProfile(Number(tgId))
       .then((data) => {
         setStats(data?.stats || emptyStats);
+        setRating(data?.rating || null);
         setHistory(data?.history || []);
       })
       .catch((err) => setError(formatApiError(err)));
@@ -50,6 +53,11 @@ export function PlayerProfile() {
   }, [matchId, tgId]);
 
   const latestHistory = useMemo(() => history.slice(0, 5), [history]);
+  const ratingValue = useMemo(() => {
+    if (!rating || Number.isNaN(rating.global)) return null;
+    return rating.global.toFixed(2);
+  }, [rating]);
+  const ratingDelta = rating?.last_delta ?? null;
 
   if (error) {
     return <StatusCard title={t("Ошибка")} message={error} />;
@@ -59,7 +67,7 @@ export function PlayerProfile() {
     return <StatusCard title={t("Ошибка")} message={t("Игрок не найден")} />;
   }
 
-  const displayName = player?.name || `ID ${tgId}`;
+  const displayName = player?.name || t("Игрок");
   const avatarSrc = player?.avatar ? resolveMediaUrl(player.avatar) : null;
 
   return (
@@ -72,7 +80,19 @@ export function PlayerProfile() {
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="truncate text-lg font-semibold">{displayName}</div>
-            <div className="truncate text-xs text-muted-foreground">ID: {tgId}</div>
+            {ratingValue ? (
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                <span>{t("Рейтинг")}:</span>
+                <span className="text-sm font-semibold text-foreground">{ratingValue}</span>
+                {ratingDelta !== null && ratingDelta !== 0 ? (
+                  ratingDelta > 0 ? (
+                    <ArrowUp className="h-4 w-4 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4 text-rose-500 drop-shadow-sm" />
+                  )
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {matchId ? (
             <button

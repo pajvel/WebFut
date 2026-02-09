@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowLeftRight, ArrowRight, Shuffle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -57,6 +58,10 @@ export function TeamVariants() {
   const [dragOverTeam, setDragOverTeam] = useState<"A" | "B" | null>(null);
   const [touchDragActive, setTouchDragActive] = useState(false);
   const [touchGhost, setTouchGhost] = useState<{ x: number; y: number } | null>(null);
+  const initializedRef = useRef(false);
+  const selectedRef = useRef(1);
+  const customizedRef = useRef(false);
+  const lastSelectRef = useRef(0);
 
   useEffect(() => {
     if (!matchId) return;
@@ -77,21 +82,56 @@ export function TeamVariants() {
           teams: normalizeTeams(variant.teams)
         }));
         setVariants(normalized);
+        const canEdit =
+          result.me.is_admin ||
+          result.members.some((m) => m.tg_id === result.me.tg_id && m.role === "organizer");
+
         if (result.team_current) {
           const baseNo = result.team_current.base_variant_no;
           const baseIndex = normalized.findIndex((variant) => variant.variant_no === baseNo);
-          setSelected(baseNo);
-          setTeams(normalizeTeams(result.team_current.current_teams));
-          setCurrentIndex(baseIndex >= 0 ? baseIndex : 0);
-          setCustomized(result.team_current.is_custom);
-          setWhyText(result.team_current.why_now_worse_text || null);
+          const recentlySelected = Date.now() - lastSelectRef.current < 5000;
+          const shouldApply =
+            !initializedRef.current ||
+            !canEdit ||
+            !recentlySelected ||
+            selectedRef.current === baseNo;
+          if (shouldApply) {
+            setSelected(baseNo);
+            selectedRef.current = baseNo;
+            setTeams(normalizeTeams(result.team_current.current_teams));
+            setCurrentIndex(baseIndex >= 0 ? baseIndex : 0);
+            setCustomized(result.team_current.is_custom);
+            customizedRef.current = result.team_current.is_custom;
+            setWhyText(result.team_current.why_now_worse_text || null);
+          }
         } else if (normalized.length) {
-          setSelected(normalized[0].variant_no);
-          setTeams(normalized[0].teams);
-          setCurrentIndex(0);
-          setCustomized(false);
-          setWhyText(null);
+          if (!initializedRef.current) {
+            setSelected(normalized[0].variant_no);
+            selectedRef.current = normalized[0].variant_no;
+            setTeams(normalized[0].teams);
+            setCurrentIndex(0);
+            setCustomized(false);
+            customizedRef.current = false;
+            setWhyText(null);
+          } else {
+            const selectedIndex = normalized.findIndex((variant) => variant.variant_no === selectedRef.current);
+            if (selectedIndex >= 0) {
+              setCurrentIndex(selectedIndex);
+              if (!customizedRef.current) {
+                setTeams(normalized[selectedIndex].teams);
+              }
+            } else {
+              setSelected(normalized[0].variant_no);
+              selectedRef.current = normalized[0].variant_no;
+              setTeams(normalized[0].teams);
+              setCurrentIndex(0);
+              setCustomized(false);
+              customizedRef.current = false;
+              setWhyText(null);
+            }
+          }
         }
+        initializedRef.current = true;
       } catch (err) {
         setError(formatApiError(err));
       }
@@ -151,6 +191,8 @@ export function TeamVariants() {
     }
     setTeams(next);
     setCustomized(true);
+    customizedRef.current = true;
+    lastSelectRef.current = Date.now();
     await updateWhyText(next);
   };
 
@@ -163,16 +205,27 @@ export function TeamVariants() {
     next[targetTeam] = [...next[targetTeam], playerId];
     setTeams(next);
     setCustomized(true);
+    customizedRef.current = true;
+    lastSelectRef.current = Date.now();
     await updateWhyText(next);
   };
 
   const handleSave = async (teamA?: string, teamB?: string) => {
     if (!matchId) return;
     try {
-      await selectTeams(Number(matchId), selected, {
-        team_name_a: teamA,
-        team_name_b: teamB
-      });
+      if (customizedRef.current && teams) {
+        await customTeams(Number(matchId), {
+          base_variant_no: selectedRef.current,
+          teams,
+          team_name_a: teamA,
+          team_name_b: teamB
+        });
+      } else {
+        await selectTeams(Number(matchId), selectedRef.current, {
+          team_name_a: teamA,
+          team_name_b: teamB
+        });
+      }
       await startMatch(Number(matchId));
       setSaveOpen(false);
       navigate(`/matches/${matchId}/live`);
@@ -192,8 +245,10 @@ export function TeamVariants() {
       setVariants(normalized);
       if (normalized.length) {
         setSelected(normalized[0].variant_no);
+        selectedRef.current = normalized[0].variant_no;
         setTeams(normalized[0].teams);
         setCustomized(false);
+        customizedRef.current = false;
         setCurrentIndex(0);
         setWhyText(null);
       }
@@ -232,8 +287,11 @@ export function TeamVariants() {
     setCurrentIndex(wrapped);
     const nextVariant = variants[wrapped];
     setSelected(nextVariant.variant_no);
+    selectedRef.current = nextVariant.variant_no;
+    lastSelectRef.current = Date.now();
     setTeams(nextVariant.teams);
     setCustomized(false);
+    customizedRef.current = false;
     setWhyText(null);
   };
 
@@ -298,11 +356,11 @@ export function TeamVariants() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div className="text-xs text-muted-foreground">Команда A</div>
-                    <div>{currentVariant.teams.A.length} игроков</div>
+                    <div>{teamA.length} игроков</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Команда B</div>
-                    <div>{currentVariant.teams.B.length} игроков</div>
+                    <div>{teamB.length} игроков</div>
                   </div>
                 </div>
                 
@@ -575,6 +633,3 @@ export function TeamVariants() {
     </div>
   );
 }
-
-
-

@@ -94,6 +94,7 @@ export type MatchDetail = {
   mvp?: {
     top_tg_id: number | null;
     votes: Record<string, number>;
+    worst_votes?: Record<string, number>;
   };
   me: {
     tg_id: number;
@@ -124,6 +125,24 @@ export type ProfileStats = {
   mvp: number;
 };
 
+export type ProfileRating = {
+  global: number;
+  last_delta: number | null;
+  last_match_id: number | null;
+  last_updated_at: string | null;
+};
+
+export type LeaderboardEntry = {
+  tg_id: number | null;
+  name: string;
+  avatar: string | null;
+  games: number;
+  wins: number;
+  losses: number;
+  rating: number;
+  last_delta: number | null;
+};
+
 export type ProfileHistoryItem = {
   id: number;
   status: "created" | "live" | "finished";
@@ -138,8 +157,13 @@ export type ProfileHistoryItem = {
 };
 
 export type ProfileResponse = {
+  rating?: ProfileRating;
   stats: ProfileStats;
   history: ProfileHistoryItem[];
+};
+
+export type LeaderboardResponse = {
+  items: LeaderboardEntry[];
 };
 
 export type ApiResponse<T> = {
@@ -153,4 +177,21 @@ export type AdminUser = {
   tg_avatar: string | null;
   custom_name: string | null;
   custom_avatar: string | null;
+};
+
+export type TgUser = {
+  tg_id: number;
+  tg_name: string;
+  tg_avatar: string | null;
+  custom_name?: string;
+};
+
+export type ManualUser = {
+  id: string;
+  custom_name: string;
+};
+
+export type TgUsersResponse = {
+  tg_users: TgUser[];
+  manual_users: ManualUser[];
 };

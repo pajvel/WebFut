@@ -24,13 +24,13 @@ from ..models import (
     User,
     UserSettings,
 )
-from ..routes.feedback import log_interaction_diffs
+from ..services.interaction_log import log_interaction_diffs
 from ..services.match import build_feedback, build_team_model_match
 from ..services.model_state import load_state, save_state
 from ..utils import err, ok
 from team_model.team_model import Config as TeamConfig
 from team_model.team_model import ModelState as TeamModelState
-from team_model.team_model import update_from_match_with_breakdown
+from team_model.team_model import update_from_match, update_from_match_with_breakdown
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -87,6 +87,42 @@ def _rebind_player(state: TeamModelState, source_id: str, target_id: str) -> Non
             key = (new_dom, new_victim)
             updated[key] = updated.get(key, 0.0) + value
         state.interactions.domination[venue] = updated
+
+
+def _seed_base_ratings(state: TeamModelState, base_ratings: dict[str, float]) -> None:
+    if not base_ratings:
+        return
+    venues = list(_VENUE_ALIASES.keys())
+    for player_id, base in base_ratings.items():
+        player = state.ensure_player(player_id, venues[0], base, False)
+        player.base_rating = base
+        player.global_rating = base
+        for venue in venues:
+            player.venue_ratings[venue] = base
+
+
+@bp.get("/feedback-votes")
+def admin_feedback_votes():
+    user = _require_admin()
+    if not user:
+        return err("forbidden", 403)
+    match_id = request.args.get("match_id", type=int)
+    db = get_db()
+    query = db.query(Feedback)
+    if match_id:
+        query = query.filter(Feedback.match_id == match_id)
+    rows = query.order_by(Feedback.match_id.desc()).all()
+    items = []
+    for row in rows:
+        items.append(
+            {
+                "match_id": row.match_id,
+                "tg_id": row.tg_id,
+                "mvp_vote_tg_id": row.mvp_vote_tg_id,
+                "answers_json": row.answers_json,
+            }
+        )
+    return ok({"items": items})
 
     if source_id in state.players:
         del state.players[source_id]
@@ -341,6 +377,7 @@ def get_state():
                 {
                     "player_id": name,
                     "global_rating": player.global_rating,
+                    "base_rating": state.base_ratings.get(name),
                     "venue_ratings": player.venue_ratings,
                     "role_tendencies": player.role_tendencies,
                     "is_guest": player.is_guest,
@@ -367,6 +404,10 @@ def patch_state_player():
     player = state.ensure_player(str(player_id), "Эксперт", TeamConfig().global_start_rating, False)
     if "global_rating" in data:
         player.global_rating = float(data["global_rating"])
+    if "base_rating" in data:
+        base_rating = float(data["base_rating"])
+        state.base_ratings[str(player_id)] = base_rating
+        player.base_rating = base_rating
     if "venue_ratings" in data:
         for venue, value in (data["venue_ratings"] or {}).items():
             player.venue_ratings[venue] = float(value)
@@ -439,7 +480,11 @@ def rebuild_state():
     context = db.query(Context).filter_by(id=context_id).one_or_none()
     if context is None:
         return err("context_not_found", 404)
+    seed_state = load_state(db, context_id)
     state = TeamModelState.empty(TeamConfig())
+    state.base_ratings = dict(getattr(seed_state, "base_ratings", {}) or {})
+    state.tier_bonus = dict(getattr(seed_state, "tier_bonus", {}) or {})
+    _seed_base_ratings(state, state.base_ratings)
     matches = (
         db.query(Match)
         .filter_by(context_id=context_id, status="finished")
@@ -580,6 +625,93 @@ def delete_match(match_id: int):
     
     db.commit()
     return ok()
+
+
+@bp.get("/tg-users")
+def get_tg_users():
+    if not _require_admin():
+        return err("forbidden", 403)
+    db = get_db()
+
+    # В БД есть два типа записей:
+    # - реальные Telegram аккаунты (большие положительные tg_id)
+    # - ручные профили/плейсхолдеры (отрицательные tg_id, либо маленькие положительные id из сидов)
+    tg_id_threshold = 100_000
+
+    tg_users = db.query(User).filter(User.tg_id >= tg_id_threshold).all()
+    manual_users = db.query(User).filter(User.tg_id < tg_id_threshold).all()
+    
+    return ok({
+        "tg_users": [
+            {
+                "tg_id": u.tg_id,
+                "tg_name": u.tg_name,
+                "tg_avatar": u.tg_avatar,
+                "custom_name": u.custom_name
+            }
+            for u in tg_users
+        ],
+        "manual_users": [
+            {
+                "id": str(u.tg_id),
+                "custom_name": u.custom_name or u.tg_name
+            }
+            for u in manual_users
+        ]
+    })
+
+
+@bp.post("/link-profiles")
+def link_profiles():
+    if not _require_admin():
+        return err("forbidden", 403)
+    db = get_db()
+    
+    data = request.get_json(silent=True) or {}
+    tg_id = data.get("tg_id")
+    manual_id = data.get("manual_id")
+    context_id = int(data.get("context_id", 1))
+
+    if tg_id is None or manual_id is None:
+        return err("missing_ids", 400)
+
+    try:
+        target_tg = int(tg_id)
+        source_tg = int(manual_id)
+    except (TypeError, ValueError):
+        return err("invalid_ids", 400)
+
+    if source_tg >= 0:
+        return err("manual_id_expected", 400)
+
+    target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
+    source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()
+    if target_user is None or source_user is None:
+        return err("users_not_found", 404)
+
+    state = load_state(db, context_id)
+    _rebind_player(state, str(source_tg), str(target_tg))
+    _rebind_members(db, source_tg, target_tg)
+    _rebind_feedback(db, source_tg, target_tg, str(source_tg), str(target_tg))
+    _rebind_payments(db, source_tg, target_tg)
+    _rebind_events(db, source_tg, target_tg)
+    _rebind_match_owner(db, source_tg, target_tg)
+    _rebind_team_json(db, str(source_tg), str(target_tg))
+    _rebind_rating_logs(db, str(source_tg), str(target_tg))
+    _rebind_interaction_logs(db, str(source_tg), str(target_tg))
+
+    # Переносим кастомные данные
+    if not target_user.custom_name and source_user.custom_name:
+        target_user.custom_name = source_user.custom_name
+    if not target_user.custom_avatar and source_user.custom_avatar:
+        target_user.custom_avatar = source_user.custom_avatar
+
+    db.query(UserSettings).filter_by(tg_id=source_tg).delete()
+    db.delete(source_user)
+    save_state(db, context_id, state)
+    db.commit()
+
+    return ok({"merged": True})
 
 
 @bp.get("/rating-logs")
@@ -769,7 +901,11 @@ def rebuild_interaction_logs():
     context_id = int(data.get("context_id", 1))
     db = get_db()
     db.query(InteractionLog).filter_by(context_id=context_id).delete()
+    seed_state = load_state(db, context_id)
     state = TeamModelState.empty(TeamConfig())
+    state.base_ratings = dict(getattr(seed_state, "base_ratings", {}) or {})
+    state.tier_bonus = dict(getattr(seed_state, "tier_bonus", {}) or {})
+    _seed_base_ratings(state, state.base_ratings)
     matches = (
         db.query(Match)
         .filter_by(context_id=context_id, status="finished")
@@ -813,7 +949,11 @@ def rebuild_rating_logs():
     context_id = int(data.get("context_id", 1))
     db = get_db()
     db.query(RatingLog).delete()
+    seed_state = load_state(db, context_id)
     state = TeamModelState.empty(TeamConfig())
+    state.base_ratings = dict(getattr(seed_state, "base_ratings", {}) or {})
+    state.tier_bonus = dict(getattr(seed_state, "tier_bonus", {}) or {})
+    _seed_base_ratings(state, state.base_ratings)
     matches = (
         db.query(Match)
         .filter_by(context_id=context_id, status="finished")

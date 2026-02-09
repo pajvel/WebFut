@@ -1,3 +1,4 @@
+import logging
 import pathlib
 
 from flask import Flask, abort, send_from_directory
@@ -21,6 +22,22 @@ def create_app() -> Flask:
         resources={r"/*": {"origins": "*"}},
         allow_headers=["Content-Type", "Authorization", "X-Telegram-InitData"],
     )
+
+    # Настройка логов для продакшена (экономия RAM)
+    if Config.SQLALCHEMY_ECHO:
+        # Только в разработке
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        # В проде - только предупреждения и ошибки
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # Отключаем лишние логгеры
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
 
     from .routes import admin, auth, events, feedback, matches, me, payments, teams
 

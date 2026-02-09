@@ -1,5 +1,6 @@
 ﻿import type {
   ApiResponse,
+  LeaderboardResponse,
   MatchDetail,
   MatchSummary,
   Me,
@@ -162,7 +163,15 @@ export async function revertTeams(matchId: number) {
   return apiFetch(`/matches/${matchId}/teams/revert`, { method: "POST" });
 }
 
-export async function customTeams(matchId: number, payload: { base_variant_no: number; teams: { A: string[]; B: string[] } }) {
+export async function customTeams(
+  matchId: number,
+  payload: {
+    base_variant_no: number;
+    teams: { A: string[]; B: string[] };
+    team_name_a?: string;
+    team_name_b?: string;
+  }
+) {
   return apiFetch<{ why_text: string }>(`/matches/${matchId}/teams/custom`, {
     method: "POST",
     body: JSON.stringify(payload)
@@ -331,6 +340,10 @@ export async function getProfile() {
   return apiFetch<ProfileResponse>("/me/profile");
 }
 
+export async function getLeaderboard() {
+  return apiFetch<LeaderboardResponse>("/me/leaderboard");
+}
+
 export async function getUserProfile(tgId: number) {
   return apiFetch<ProfileResponse>(`/users/${tgId}/profile`);
 }
@@ -345,6 +358,7 @@ export async function adminGetState(contextId = 1) {
     players: Array<{
       player_id: string;
       global_rating: number;
+      base_rating?: number | null;
       venue_ratings: Record<string, number>;
       role_tendencies?: Record<string, number>;
       is_guest: boolean;
@@ -358,11 +372,19 @@ export async function adminPatchStatePlayer(payload: {
   player_id: string;
   context_id?: number;
   global_rating?: number;
+  base_rating?: number;
   venue_ratings?: Record<string, number>;
 }) {
   return apiFetch("/admin/state/player", {
     method: "PATCH",
     body: JSON.stringify(payload)
+  });
+}
+
+export async function adminRebuildState(contextId = 1) {
+  return apiFetch("/admin/state/rebuild", {
+    method: "POST",
+    body: JSON.stringify({ context_id: contextId })
   });
 }
 
@@ -461,6 +483,20 @@ export async function adminRebuildInteractionLogs(context_id = 1) {
     method: "POST",
     body: JSON.stringify({ context_id })
   });
+}
+
+export async function adminGetFeedbackVotes(params: { match_id?: number }) {
+  const query = new URLSearchParams();
+  if (params.match_id) query.set("match_id", String(params.match_id));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<{
+    items: Array<{
+      match_id: number;
+      tg_id: number;
+      mvp_vote_tg_id: number | null;
+      answers_json: Record<string, unknown> | null;
+    }>;
+  }>(`/admin/feedback-votes${suffix}`);
 }
 
 export async function adminDeleteMatch(matchId: number) {

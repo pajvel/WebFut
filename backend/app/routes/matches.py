@@ -21,7 +21,7 @@ from ..models import (
     TeamVariant,
     User,
 )
-from ..routes.feedback import log_interaction_diffs
+from ..services.interaction_log import log_interaction_diffs
 from ..services.match import build_feedback, build_team_model_match, ensure_active_segment, finish_segment
 from ..services.model_state import load_state, save_state
 from ..utils import err, ok
@@ -168,7 +168,11 @@ def create_match():
         db.commit()
     scheduled_at = None
     if data.get("scheduled_at"):
-        scheduled_at = datetime.fromisoformat(data["scheduled_at"])
+        raw_scheduled = data["scheduled_at"]
+        try:
+            scheduled_at = datetime.fromisoformat(raw_scheduled.replace("Z", "+00:00"))
+        except ValueError:
+            return err("invalid_scheduled_at", 400)
     match = Match(
         context_id=context_id,
         created_by=user.tg_id,
@@ -505,9 +509,36 @@ def get_match(match_id: int):
     vote_counts = {}
     for (tg_id,) in mvp_votes:
         vote_counts[tg_id] = vote_counts.get(tg_id, 0) + 1
+    player_stats = {}
+    for event in events:
+        if event.event_type == "own_goal":
+            continue
+        if event.scorer_tg_id:
+            stats = player_stats.setdefault(event.scorer_tg_id, {"goals": 0, "assists": 0})
+            stats["goals"] += 1
+        if event.assist_tg_id:
+            stats = player_stats.setdefault(event.assist_tg_id, {"goals": 0, "assists": 0})
+            stats["assists"] += 1
+    worst_votes = {}
+    worst_rows = (
+        db.query(Feedback.answers_json)
+        .filter(Feedback.match_id == match_id, Feedback.answers_json.is_not(None))
+        .all()
+    )
+    for (answers,) in worst_rows:
+        if not answers:
+            continue
+        worst = answers.get("worst")
+        if worst:
+            worst_votes[worst] = worst_votes.get(worst, 0) + 1
     top_mvp = None
     if vote_counts:
-        top_mvp = max(vote_counts.items(), key=lambda item: item[1])[0]
+        def mvp_key(tg_id):
+            stats = player_stats.get(tg_id, {"goals": 0, "assists": 0})
+            useful = stats["goals"] + stats["assists"]
+            return (vote_counts.get(tg_id, 0), useful, stats["goals"])
+
+        top_mvp = max(vote_counts.keys(), key=mvp_key)
 
     return ok(
         {
@@ -596,6 +627,7 @@ def get_match(match_id: int):
             "mvp": {
                 "top_tg_id": top_mvp,
                 "votes": vote_counts,
+                "worst_votes": worst_votes,
             },
             "me": {"tg_id": user.tg_id, "is_admin": is_admin(user)},
         }

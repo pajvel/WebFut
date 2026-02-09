@@ -231,6 +231,8 @@ def set_custom(match_id: int):
     if teams is None:
         return err("invalid_payload", 400)
     base_variant_no = int(data.get("base_variant_no", 1))
+    team_name_a = data.get("team_name_a")
+    team_name_b = data.get("team_name_b")
     variant = (
         db.query(TeamVariant)
         .filter_by(match_id=match_id, variant_no=base_variant_no)
@@ -268,6 +270,10 @@ def set_custom(match_id: int):
         }
         current.base_variant_no = base_variant_no
         current.current_teams_json = {**teams, **preserved_names}
+        if team_name_a:
+            current.current_teams_json["name_a"] = team_name_a
+        if team_name_b:
+            current.current_teams_json["name_b"] = team_name_b
         current.is_custom = True
         current.why_now_worse_text = why_text
     else:
@@ -278,6 +284,10 @@ def set_custom(match_id: int):
             is_custom=True,
             why_now_worse_text=why_text,
         )
+        if team_name_a:
+            current.current_teams_json["name_a"] = team_name_a
+        if team_name_b:
+            current.current_teams_json["name_b"] = team_name_b
         db.add(current)
     db.commit()
     return ok({"why_text": why_text})

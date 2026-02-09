@@ -1,9 +1,9 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { Crown, Moon, Pencil, Sun, Trophy } from "lucide-react";
+import { ArrowDown, ArrowUp, Crown, Medal, Moon, Pencil, Sun, Trophy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { getProfile, patchMe, patchSettings, uploadAvatar } from "../lib/api";
-import type { ProfileHistoryItem, ProfileStats } from "../lib/types";
+import { getLeaderboard, getProfile, patchMe, patchSettings, uploadAvatar } from "../lib/api";
+import type { LeaderboardEntry, ProfileHistoryItem, ProfileRating, ProfileStats } from "../lib/types";
 import { useAppContext } from "../lib/app-context";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
@@ -30,8 +30,12 @@ export function Profile() {
   const navigate = useNavigate();
   const t = useMatText();
   const [stats, setStats] = useState<ProfileStats>(emptyStats);
+  const [rating, setRating] = useState<ProfileRating | null>(null);
   const [history, setHistory] = useState<ProfileHistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardItems, setLeaderboardItems] = useState<LeaderboardEntry[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftFile, setDraftFile] = useState<File | null>(null);
@@ -43,6 +47,7 @@ export function Profile() {
     getProfile()
       .then((data) => {
         setStats(data?.stats || emptyStats);
+        setRating(data?.rating || null);
         setHistory(data?.history || []);
       })
       .catch((err) => setError(formatApiError(err)));
@@ -55,7 +60,22 @@ export function Profile() {
     }
   }, [editOpen, me?.custom_name, me?.tg_name]);
 
+  const handleLeaderboardOpenChange = (open: boolean) => {
+    setLeaderboardOpen(open);
+    if (!open) return;
+    setLeaderboardLoading(true);
+    getLeaderboard()
+      .then((data) => setLeaderboardItems(data?.items || []))
+      .catch((err) => setError(formatApiError(err)))
+      .finally(() => setLeaderboardLoading(false));
+  };
+
   const latestHistory = useMemo(() => history.slice(0, 5), [history]);
+  const ratingValue = useMemo(() => {
+    if (!rating || Number.isNaN(rating.global)) return null;
+    return rating.global.toFixed(2);
+  }, [rating]);
+  const ratingDelta = rating?.last_delta ?? null;
 
   const toggle18 = async () => {
     if (!settings) return;
@@ -106,7 +126,20 @@ export function Profile() {
             <div className="truncate text-lg font-semibold">
               {me?.custom_name || me?.tg_name}
             </div>
-            <div className="truncate text-xs text-muted-foreground">ID: {me?.tg_id}</div>
+            <div className="truncate text-xs text-muted-foreground" />
+            {ratingValue ? (
+              <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                <span>{t("Рейтинг")}:</span>
+                <span className="text-sm font-semibold text-foreground">{ratingValue}</span>
+                {ratingDelta !== null && ratingDelta !== 0 ? (
+                  ratingDelta > 0 ? (
+                    <ArrowUp className="h-4 w-4 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4 text-rose-500 drop-shadow-sm" />
+                  )
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {me?.is_admin ? (
@@ -114,6 +147,9 @@ export function Profile() {
                 <Crown className="h-4 w-4" />
               </Button>
             ) : null}
+            <Button variant="outline" size="sm" onClick={() => handleLeaderboardOpenChange(true)}>
+              <Medal className="h-4 w-4" />
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -221,6 +257,106 @@ export function Profile() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={leaderboardOpen} onOpenChange={handleLeaderboardOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("Лидерборд")}</DialogTitle>
+          </DialogHeader>
+          {leaderboardLoading ? (
+            <div className="text-sm text-muted-foreground">{t("Загрузка...")}</div>
+          ) : leaderboardItems.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t("Нет данных")}</div>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid grid-cols-3 items-end gap-3">
+                {(() => {
+                  const top = leaderboardItems.slice(0, 3);
+                  const slots = [
+                    { place: 2, entry: top[1], height: "h-20" },
+                    { place: 1, entry: top[0], height: "h-28" },
+                    { place: 3, entry: top[2], height: "h-16" }
+                  ];
+                  return slots.map((slot) => {
+                    const entry = slot.entry;
+                    return (
+                      <div key={`podium-${slot.place}`} className="flex flex-col items-center">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-card/80">
+                          {entry?.avatar ? (
+                            <Avatar className="h-14 w-14">
+                              <AvatarImage src={resolveMediaUrl(entry.avatar)} />
+                              <AvatarFallback>{entry.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <div className="text-sm font-semibold">
+                              {entry ? entry.name.slice(0, 2).toUpperCase() : "--"}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-center">
+                          {entry?.name || "—"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {entry ? entry.rating.toFixed(2) : "0.00"}
+                        </div>
+                        <div className={`mt-2 w-full rounded-t-xl border border-border/60 bg-card/70 ${slot.height}`} />
+                        <div className="mt-2 flex h-6 w-6 items-center justify-center rounded-full border border-border/70 text-[11px] font-semibold">
+                          {slot.place}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left text-sm">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                      <th className="py-2 pr-3">#</th>
+                      <th className="py-2 pr-3">{t("Игрок")}</th>
+                      <th className="py-2 pr-3">{t("Матчи")}</th>
+                      <th className="py-2 pr-3">{t("Победы")}</th>
+                      <th className="py-2 pr-3">{t("Поражения")}</th>
+                      <th className="py-2 text-right">{t("Рейтинг")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboardItems.map((entry, index) => (
+                      <tr key={`${entry.tg_id}-${index}`} className="border-t border-border/60">
+                        <td className="py-2 pr-3 text-xs text-muted-foreground">
+                          {index + 1}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8 border border-border">
+                              {entry.avatar ? (
+                                <AvatarImage src={resolveMediaUrl(entry.avatar)} />
+                              ) : null}
+                              <AvatarFallback>
+                                {entry.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{entry.name}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">{entry.games}</td>
+                        <td className="py-2 pr-3">{entry.wins}</td>
+                        <td className="py-2 pr-3">{entry.losses}</td>
+                        <td className="py-2 text-right font-semibold">
+                          {entry.rating.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

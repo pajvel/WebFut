@@ -1,5 +1,6 @@
 import pickle
 from datetime import datetime
+import pickle
 
 from team_model.team_model import Config as TeamConfig
 from team_model.team_model import ModelState as TeamModelState
@@ -15,7 +16,13 @@ def load_state(db, context_id: int) -> TeamModelState:
         db.add(record)
         db.commit()
         return state
-    return pickle.loads(record.state_blob)
+    state = pickle.loads(record.state_blob)
+    if not hasattr(state, "base_ratings"):
+        state.base_ratings = {}
+    for player in state.players.values():
+        if not hasattr(player, "base_rating"):
+            player.base_rating = None
+    return state
 
 
 def save_state(db, context_id: int, state: TeamModelState) -> None:

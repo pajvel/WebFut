@@ -98,13 +98,15 @@ class PlayerState:
     guest_matches: int = 0
     role_tendencies: Dict[str, float] = field(default_factory=dict)
     tier_bonus: float = 0.0
+    base_rating: float | None = None
 
     def get_venue_rating(self, venue: str, default: float) -> float:
         return self.venue_ratings.get(venue, default + self.tier_bonus)
 
     def ensure_venue(self, venue: str, default: float) -> None:
         if venue not in self.venue_ratings:
-            self.venue_ratings[venue] = default + self.tier_bonus
+            base = self.base_rating if self.base_rating is not None else default
+            self.venue_ratings[venue] = base + self.tier_bonus
 
 
 @dataclass
@@ -139,20 +141,23 @@ class ModelState:
     interactions: InteractionState
     config: object
     tier_bonus: Dict[str, float] = field(default_factory=dict)
+    base_ratings: Dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def empty(cls, config: object) -> "ModelState":
-        return cls(players={}, interactions=InteractionState(), config=config, tier_bonus={})
+        return cls(players={}, interactions=InteractionState(), config=config, tier_bonus={}, base_ratings={})
 
     def ensure_player(self, name: str, venue: str, initial_rating: float, is_guest: bool) -> PlayerState:
         bonus = self.tier_bonus.get(name, 0.0)
+        base = self.base_ratings.get(name, initial_rating)
         if name not in self.players:
             self.players[name] = PlayerState(
                 name=name,
-                global_rating=initial_rating + bonus,
-                venue_ratings={venue: initial_rating + bonus},
+                global_rating=base + bonus,
+                venue_ratings={venue: base + bonus},
                 is_guest=is_guest,
                 tier_bonus=bonus,
+                base_rating=base,
             )
         player = self.players[name]
         player.ensure_venue(venue, initial_rating)

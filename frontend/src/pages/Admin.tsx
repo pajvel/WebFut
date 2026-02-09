@@ -1,6 +1,17 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 
-import { Activity, GitMerge, Pencil, RefreshCw, Shield, Swords, Trash } from "lucide-react";
+import {
+  Activity,
+  GitMerge,
+  MessageSquareText,
+  Pencil,
+  RefreshCw,
+  Shield,
+  Swords,
+  Trash,
+  UserPlus,
+  Users
+} from "lucide-react";
 
 import {
   adminAddMatchMembers,
@@ -10,14 +21,18 @@ import {
   adminGetInteractionLogs,
   adminGetInteractions,
   adminRebuildInteractionLogs,
+  adminRebuildState,
   adminRebuildRatingLogs,
   adminGetRatingLogs,
+  adminGetFeedbackVotes,
   adminPatchInteraction,
+  adminPatchUser,
   adminGetState,
   adminListUsers,
   adminPatchSegment,
   adminPatchStatePlayer,
   adminRemoveMatchMember,
+  apiFetch,
   fetchMatches,
   getMatch
 } from "../lib/api";
@@ -28,12 +43,14 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { StatusCard } from "../components/StatusCard";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "../components/ui/dialog";
 import { formatApiError } from "../lib/errors";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { TgUser, ManualUser, TgUsersResponse } from "../lib/types";
 
 type StatePlayer = {
   player_id: string;
   global_rating: number;
+  base_rating?: number | null;
   venue_ratings: Record<string, number>;
   role_tendencies?: Record<string, number>;
   is_guest: boolean;
@@ -69,11 +86,19 @@ export function Admin() {
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerTgId, setNewPlayerTgId] = useState("");
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  
+  // Новые состояния для TG профилей
+  const [showTgProfiles, setShowTgProfiles] = useState(false);
+  const [tgUsers, setTgUsers] = useState<TgUser[]>([]);
+  const [manualUsers, setManualUsers] = useState<ManualUser[]>([]);
+  const [selectedTgUser, setSelectedTgUser] = useState<TgUser | null>(null);
+  const [selectedManualUser, setSelectedManualUser] = useState<ManualUser | null>(null);
   const [sortKey, setSortKey] = useState<"name" | "global" | "venueA" | "venueB">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editPlayer, setEditPlayer] = useState<StatePlayer | null>(null);
   const [editValues, setEditValues] = useState({
-    global: "",
+    name: "",
+    base: "",
     venueA: "",
     venueB: "",
     bindTg: ""
@@ -99,6 +124,17 @@ export function Admin() {
   }>>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
+  const [feedbackVotesOpen, setFeedbackVotesOpen] = useState(false);
+  const [feedbackVotesLoading, setFeedbackVotesLoading] = useState(false);
+  const [feedbackMatchId, setFeedbackMatchId] = useState("");
+  const [feedbackVotesItems, setFeedbackVotesItems] = useState<
+    Array<{
+      match_id: number;
+      tg_id: number;
+      mvp_vote_tg_id: number | null;
+      answers_json: Record<string, unknown> | null;
+    }>
+  >([]);
   const [matrixOpen, setMatrixOpen] = useState(false);
   const [matrixKind, setMatrixKind] = useState<"synergy" | "domination">("synergy");
   const [matrixVenue, setMatrixVenue] = useState("__global__");
@@ -107,6 +143,7 @@ export function Admin() {
   const [matrixLoading, setMatrixLoading] = useState(false);
   const [cellEdit, setCellEdit] = useState<{ a: string; b: string; value: string } | null>(null);
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [interactionLogs, setInteractionLogs] = useState<Array<{
     id: number;
     context_id: number;
@@ -128,6 +165,44 @@ export function Admin() {
   const venueAliases: Record<string, string[]> = {
     [venueA]: [venueA, "зал1", "Зал 1", "зал 1"],
     [venueB]: [venueB, "зал2", "Зал 2", "зал 2"]
+  };
+
+  // Функции для TG профилей
+  const loadTgProfiles = async () => {
+    try {
+      setError(null);
+      const response = await apiFetch<TgUsersResponse>("/admin/tg-users");
+      if (response) {
+        setTgUsers(response.tg_users || []);
+        setManualUsers(response.manual_users || []);
+      }
+    } catch (err) {
+      setTgUsers([]);
+      setManualUsers([]);
+      setError(formatApiError(err));
+    }
+  };
+
+  const linkProfiles = async () => {
+    if (!selectedTgUser || !selectedManualUser) return;
+    
+    try {
+      setError(null);
+      await apiFetch("/admin/link-profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          tg_id: selectedTgUser.tg_id,
+          manual_id: selectedManualUser.id
+        })
+      });
+      
+      // Обновляем списки
+      await loadTgProfiles();
+      setSelectedTgUser(null);
+      setSelectedManualUser(null);
+    } catch (err) {
+      setError(formatApiError(err));
+    }
   };
 
   const loadUsers = () => {
@@ -165,6 +240,13 @@ export function Admin() {
       .catch((err) => setError(formatApiError(err)));
   }, [selectedMatchId]);
 
+  // Загружаем TG профили при открытии модалки
+  useEffect(() => {
+    if (showTgProfiles) {
+      loadTgProfiles();
+    }
+  }, [showTgProfiles]);
+
   const displayName = (playerId: string) => {
     const tgId = Number(playerId);
     if (!Number.isNaN(tgId)) {
@@ -174,6 +256,33 @@ export function Admin() {
       }
     }
     return playerId;
+  };
+  const nameById = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return "—";
+    if (typeof value === "number") return displayName(String(value));
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) return displayName(String(asNumber));
+    return String(value);
+  };
+  const formatPair = (pair: unknown) => {
+    if (!Array.isArray(pair) || pair.length < 2) return null;
+    return `${nameById(pair[0])} vs ${nameById(pair[1])}`;
+  };
+  const formatKey = (value: string) => value.replace(/_/g, " ");
+  const extractFanEntries = (answers: Record<string, unknown>) => {
+    const entries: Array<[string, unknown]> = [];
+    for (const [key, value] of Object.entries(answers)) {
+      if (/^(syn|dom|role)_\d+$/i.test(key)) {
+        entries.push([key, value]);
+      }
+    }
+    const nested = answers.fan || answers.fan_responses;
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      for (const [key, value] of Object.entries(nested as Record<string, unknown>)) {
+        entries.push([`fan.${key}`, value]);
+      }
+    }
+    return entries;
   };
   const roleLabel = (roleKey: string) => {
     if (roleKey === "attack") return "Атака";
@@ -245,7 +354,7 @@ export function Admin() {
         if (memberRating) {
           await adminPatchStatePlayer({
             player_id: String(tgId),
-            global_rating: Number(memberRating)
+            base_rating: Number(memberRating)
           });
         }
       } catch (err) {
@@ -356,7 +465,7 @@ export function Admin() {
       <Card>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">Рейтинги игроков</div>
+            <div />
             <div className="flex items-center gap-2">
               <Button
                 size="icon"
@@ -380,7 +489,16 @@ export function Admin() {
                   loadInteractionLogs("synergy", "__global__");
                 }}
               >
-                <GitMerge className="h-5 w-5" />
+                <Users className="h-5 w-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label="TG профили"
+                className="h-10 w-10"
+                onClick={() => setShowTgProfiles(true)}
+              >
+                <UserPlus className="h-5 w-5" />
               </Button>
               <Button
                 size="icon"
@@ -417,6 +535,15 @@ export function Admin() {
                 className="h-10 w-10"
               >
                 <Activity className="h-5 w-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => setFeedbackVotesOpen(true)}
+                aria-label="Голоса фидбека"
+                className="h-10 w-10"
+              >
+                <MessageSquareText className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -495,8 +622,13 @@ export function Admin() {
                         variant="ghost"
                         onClick={() => {
                           setEditPlayer(player);
+                          const playerTgId = Number(player.player_id);
+                          const user = Number.isNaN(playerTgId)
+                            ? null
+                            : users.find((u) => u.tg_id === playerTgId) || null;
                           setEditValues({
-                            global: String(player.global_rating ?? ""),
+                            name: user?.custom_name || user?.tg_name || "",
+                            base: player.base_rating != null ? String(player.base_rating) : "",
                             venueA: String(getVenueRating(player, venueA) ?? ""),
                             venueB: String(getVenueRating(player, venueB) ?? ""),
                             bindTg: ""
@@ -750,6 +882,11 @@ export function Admin() {
           {editPlayer ? (
             <div className="space-y-3">
               <div className="text-sm font-semibold">{displayName(editPlayer.player_id)}</div>
+              <Input
+                value={editValues.name}
+                onChange={(e) => setEditValues((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Имя"
+              />
               <div className="grid gap-2 sm:grid-cols-3">
                 <Input
                   value={editValues.venueA}
@@ -762,9 +899,9 @@ export function Admin() {
                   placeholder={venueB}
                 />
                 <Input
-                  value={editValues.global}
-                  onChange={(e) => setEditValues((prev) => ({ ...prev, global: e.target.value }))}
-                  placeholder="Глобальный"
+                  value={editValues.base}
+                  onChange={(e) => setEditValues((prev) => ({ ...prev, base: e.target.value }))}
+                  placeholder="Стартовый рейтинг"
                 />
               </div>
               <div className="space-y-2">
@@ -809,9 +946,17 @@ export function Admin() {
               </div>
               <div className="flex gap-2">
                 <Button
+                  type="button"
                   onClick={async () => {
                     if (!editPlayer) return;
+                    if (editSaving) return;
+                    setEditSaving(true);
                     try {
+                      const trimmedName = editValues.name.trim();
+                      const playerTgId = Number(editPlayer.player_id);
+                      if (trimmedName && !Number.isNaN(playerTgId)) {
+                        await adminPatchUser(playerTgId, { custom_name: trimmedName });
+                      }
                       const nextVenueRatings: Record<string, number> = {};
                       if (editValues.venueA !== "") {
                         nextVenueRatings[venueA] = Number(editValues.venueA);
@@ -821,9 +966,11 @@ export function Admin() {
                       }
                       await adminPatchStatePlayer({
                         player_id: editPlayer.player_id,
-                        global_rating: editValues.global === "" ? undefined : Number(editValues.global),
+                        base_rating: editValues.base === "" ? undefined : Number(editValues.base),
                         venue_ratings: Object.keys(nextVenueRatings).length ? nextVenueRatings : undefined
                       });
+                      await adminRebuildState(1);
+                      await adminRebuildRatingLogs(1);
                       if (editValues.bindTg && editValues.bindTg !== editPlayer.player_id) {
                         await adminBindStatePlayer({
                           player_id: editPlayer.player_id,
@@ -831,15 +978,19 @@ export function Admin() {
                         });
                       }
                       setEditPlayer(null);
+                      loadUsers();
                       loadState();
                     } catch (err) {
                       setError(formatApiError(err));
+                    } finally {
+                      setEditSaving(false);
                     }
                   }}
+                  disabled={editSaving}
                 >
-                  Сохранить
+                  {editSaving ? "Сохраняю..." : "Сохранить"}
                 </Button>
-                <Button variant="secondary" onClick={() => setEditPlayer(null)}>
+                <Button type="button" variant="secondary" onClick={() => setEditPlayer(null)}>
                   Отмена
                 </Button>
               </div>
@@ -957,6 +1108,137 @@ export function Admin() {
                     </CardContent>
                   </Card>
                 ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={feedbackVotesOpen} onOpenChange={setFeedbackVotesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Голоса фидбека</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <Input
+                value={feedbackMatchId}
+                onChange={(e) => setFeedbackMatchId(e.target.value)}
+                placeholder="Матч ID (опционально)"
+              />
+              <Button
+                onClick={async () => {
+                  setFeedbackVotesLoading(true);
+                  try {
+                    const result = await adminGetFeedbackVotes({
+                      match_id: feedbackMatchId ? Number(feedbackMatchId) : undefined
+                    });
+                    setFeedbackVotesItems(result.items || []);
+                  } catch (err) {
+                    setError(formatApiError(err));
+                  } finally {
+                    setFeedbackVotesLoading(false);
+                  }
+                }}
+              >
+                {feedbackVotesLoading ? "Загружаю..." : "Показать"}
+              </Button>
+            </div>
+            <div className="max-h-64 space-y-2 overflow-auto">
+              {feedbackVotesItems.length === 0 ? (
+                <div className="text-xs text-muted-foreground">Нет голосов</div>
+              ) : (
+                feedbackVotesItems.map((item, index) => {
+                  const answers = (item.answers_json || {}) as Record<string, unknown>;
+                  const quick = (answers.quick || {}) as Record<string, unknown>;
+                  const worst = answers.worst;
+                  const comparisons = (answers.comparisons || {}) as Record<string, unknown>;
+                  const pairs = (answers.comparison_pairs || {}) as Record<string, unknown>;
+                  const ownPair = formatPair(pairs.cmp_own);
+                  const oppPair = formatPair(pairs.cmp_opp);
+                  const crossPair = formatPair(pairs.cmp_cross);
+                  const expandedPairs = (answers.expanded_pairs || {}) as Record<string, unknown>;
+                  const roleVote = (answers.role_vote || {}) as Record<string, unknown>;
+                  const fanEntries = extractFanEntries(answers);
+                  return (
+                    <Card key={`${item.match_id}-${item.tg_id}-${index}`}>
+                      <CardContent className="space-y-1 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span>Матч #{item.match_id}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {nameById(item.tg_id)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Лучший → {nameById(answers.best)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          MVP → {nameById(item.mvp_vote_tg_id)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Худший → {nameById(worst)}
+                        </div>
+                        {quick.best || quick.compare_left || quick.compare_right ? (
+                          <div className="text-xs text-muted-foreground">
+                            Быстрый: {nameById(quick.best)} • {nameById(quick.compare_left)} vs{" "}
+                            {nameById(quick.compare_right)}
+                          </div>
+                        ) : null}
+                        {ownPair ? (
+                          <div className="text-xs text-muted-foreground">
+                            Сравнение (своя): {ownPair} → {nameById(comparisons.cmp_own)}
+                          </div>
+                        ) : null}
+                        {oppPair ? (
+                          <div className="text-xs text-muted-foreground">
+                            Сравнение (чужая): {oppPair} → {nameById(comparisons.cmp_opp)}
+                          </div>
+                        ) : null}
+                        {crossPair ? (
+                          <div className="text-xs text-muted-foreground">
+                            Сравнение (своя vs чужая): {crossPair} → {nameById(comparisons.cmp_cross)}
+                          </div>
+                        ) : null}
+                        {expandedPairs.syn_team_a || expandedPairs.syn_team_b ? (
+                          <div className="text-xs text-muted-foreground">
+                            Сыгранность (своя): {nameById(expandedPairs.syn_team_a)} +{" "}
+                            {nameById(expandedPairs.syn_team_b)}
+                          </div>
+                        ) : null}
+                        {expandedPairs.syn_opp_a || expandedPairs.syn_opp_b ? (
+                          <div className="text-xs text-muted-foreground">
+                            Сыгранность (чужая): {nameById(expandedPairs.syn_opp_a)} +{" "}
+                            {nameById(expandedPairs.syn_opp_b)}
+                          </div>
+                        ) : null}
+                        {expandedPairs.dom_my || expandedPairs.dom_opp_target ? (
+                          <div className="text-xs text-muted-foreground">
+                            Доминировал: {nameById(expandedPairs.dom_my)} над{" "}
+                            {nameById(expandedPairs.dom_opp_target)}
+                          </div>
+                        ) : null}
+                        {expandedPairs.dom_opp || expandedPairs.dom_my_target ? (
+                          <div className="text-xs text-muted-foreground">
+                            Доминировал (соперник): {nameById(expandedPairs.dom_opp)} над{" "}
+                            {nameById(expandedPairs.dom_my_target)}
+                          </div>
+                        ) : null}
+                        {roleVote.player_id || roleVote.role ? (
+                          <div className="text-xs text-muted-foreground">
+                            Роль: {formatKey(String(roleVote.role || "—"))} →{" "}
+                            {nameById(roleVote.player_id)}
+                          </div>
+                        ) : null}
+                        {fanEntries.length ? (
+                          <div className="text-xs text-muted-foreground">
+                            Фан:{" "}
+                            {fanEntries.map(([key, value]) => `${formatKey(key)} → ${nameById(value)}`).join(" • ")}
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </div>
@@ -1206,6 +1488,104 @@ export function Admin() {
               </tbody>
             </table>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Модалка для TG профилей */}
+      <Dialog open={showTgProfiles} onOpenChange={setShowTgProfiles}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Управление Telegram профилями</DialogTitle>
+            <DialogDescription>
+              Привяжите ручные профили к аккаунтам Telegram
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-6 max-h-[65vh] overflow-auto">
+            {/* TG пользователи */}
+            <div>
+              <h3 className="font-semibold mb-3">Telegram пользователи ({tgUsers.length})</h3>
+              <div className="space-y-2">
+                {tgUsers.length === 0 ? (
+                  <div className="text-muted-foreground text-sm">Нет Telegram пользователей</div>
+                ) : (
+                  tgUsers.map((user) => (
+                    <div
+                      key={user.tg_id}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        selectedTgUser?.tg_id === user.tg_id
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:bg-muted'
+                      }`}
+                      onClick={() => setSelectedTgUser(user)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {user.tg_avatar && (
+                          <img
+                            src={user.tg_avatar}
+                            alt={user.tg_name}
+                            className="w-10 h-10 rounded-full"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium">{user.tg_name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.custom_name || 'Нет кастомного имени'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            ID: {user.tg_id}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Ручные пользователи */}
+            <div>
+              <h3 className="font-semibold mb-3">Ручные профили ({manualUsers.length})</h3>
+              <div className="space-y-2">
+                {manualUsers.length === 0 ? (
+                  <div className="text-muted-foreground text-sm">Нет ручных профилей</div>
+                ) : (
+                  manualUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        selectedManualUser?.id === user.id
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:bg-muted'
+                      }`}
+                      onClick={() => setSelectedManualUser(user)}
+                    >
+                      <div>
+                        <div className="font-medium">{user.custom_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          ID: {user.id}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => setShowTgProfiles(false)}
+              variant="outline"
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={linkProfiles}
+              disabled={!selectedTgUser || !selectedManualUser}
+            >
+              Привязать профили
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
