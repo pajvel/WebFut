@@ -162,8 +162,15 @@ def admin_feedback_votes():
         )
     return ok({"items": items})
 
-    if source_id in state.players:
-        del state.players[source_id]
+
+def _parse_tg_id(raw_value) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_tg_id")
+    if value == 0:
+        raise ValueError("invalid_tg_id")
+    return value
 
 
 def _replace_id(value, source_id: str, target_id: str, source_tg: int, target_tg: int):
@@ -414,34 +421,48 @@ def create_user():
     return ok({"tg_id": user.tg_id})
 
 
-@bp.route("/users/<int:tg_id>", methods=["PATCH", "PUT"])
-def patch_user(tg_id: int):
+@bp.route("/users/<tg_id>", methods=["PATCH", "PUT"])
+def patch_user(tg_id: str):
     if not _require_admin():
         return err("forbidden", 403)
+    try:
+        tg_id_value = _parse_tg_id(tg_id)
+    except ValueError:
+        return err("invalid_tg_id", 400)
     data = request.get_json(silent=True) or {}
     db = get_db()
-    user = db.query(User).filter_by(tg_id=tg_id).one_or_none()
+    user = db.query(User).filter_by(tg_id=tg_id_value).one_or_none()
     if user is None:
-        return err("user_not_found", 404)
+        # Allow editing "state-only" players by creating a user shell.
+        fallback_name = data.get("custom_name") or data.get("tg_name") or f"User {tg_id_value}"
+        user = User(tg_id=tg_id_value, tg_name=fallback_name, tg_avatar=None)
+        db.add(user)
+        if db.query(UserSettings).filter_by(tg_id=tg_id_value).one_or_none() is None:
+            db.add(UserSettings(tg_id=tg_id_value))
     user.custom_name = data.get("custom_name", user.custom_name)
     user.custom_avatar = data.get("custom_avatar", user.custom_avatar)
     db.commit()
     return ok()
 
 
-@bp.route("/users/<int:tg_id>", methods=["DELETE", "POST"])
-def delete_user(tg_id: int):
+@bp.route("/users/<tg_id>", methods=["DELETE", "POST"])
+def delete_user(tg_id: str):
     if not _require_admin():
         return err("forbidden", 403)
+    try:
+        tg_id_value = _parse_tg_id(tg_id)
+    except ValueError:
+        return err("invalid_tg_id", 400)
 
     db = get_db()
-    user = db.query(User).filter_by(tg_id=tg_id).one_or_none()
-    if user is None:
-        return err("user_not_found", 404)
-
     context_id = int(request.args.get("context_id", 1) or 1)
     state = load_state(db, context_id)
-    player_id = str(tg_id)
+    player_id = str(tg_id_value)
+    user = db.query(User).filter_by(tg_id=tg_id_value).one_or_none()
+
+    has_state_player = player_id in getattr(state, "players", {})
+    if user is None and not has_state_player:
+        return err("user_not_found", 404)
 
     # Always remove playable profile artifacts.
     _drop_player_from_state(state, player_id)
@@ -452,27 +473,29 @@ def delete_user(tg_id: int):
 
     tg_id_threshold = 100_000
     hard_deleted = False
-    if tg_id < tg_id_threshold:
+    if tg_id_value < tg_id_threshold:
         # Profile without TG account: fully delete.
-        db.query(MatchMember).filter_by(tg_id=tg_id).delete(synchronize_session=False)
-        db.query(Feedback).filter_by(tg_id=tg_id).delete(synchronize_session=False)
-        db.query(Feedback).filter_by(mvp_vote_tg_id=tg_id).update(
+        db.query(MatchMember).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
+        db.query(Feedback).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
+        db.query(Feedback).filter_by(mvp_vote_tg_id=tg_id_value).update(
             {"mvp_vote_tg_id": None},
             synchronize_session=False,
         )
-        db.query(PaymentRequest).filter_by(tg_id=tg_id).delete(synchronize_session=False)
-        db.query(PaymentStatus).filter_by(tg_id=tg_id).delete(synchronize_session=False)
-        db.query(PaymentInfo).filter_by(payer_tg_id=tg_id).update(
+        db.query(PaymentRequest).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
+        db.query(PaymentStatus).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
+        db.query(PaymentInfo).filter_by(payer_tg_id=tg_id_value).update(
             {"payer_tg_id": None},
             synchronize_session=False,
         )
-        db.query(UserSettings).filter_by(tg_id=tg_id).delete(synchronize_session=False)
-        db.delete(user)
+        db.query(UserSettings).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
+        if user is not None:
+            db.delete(user)
         hard_deleted = True
     else:
         # TG account remains for future re-binding.
-        user.custom_name = None
-        user.custom_avatar = None
+        if user is not None:
+            user.custom_name = None
+            user.custom_avatar = None
 
     save_state(db, context_id, state)
     try:
@@ -579,6 +602,11 @@ def bind_state_player():
     _rebind_team_json(db, source_id, target_id)
     _rebind_rating_logs(db, source_id, target_id)
     _rebind_interaction_logs(db, source_id, target_id)
+    _drop_player_from_state(state, source_id)
+    if target_id not in state.players:
+        base = state.base_ratings.get(source_id, TeamConfig().global_start_rating)
+        state.ensure_player(target_id, "Эксперт", float(base), False)
+        state.base_ratings[target_id] = float(base)
     source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()
     target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
     if source_user and target_user:
@@ -825,6 +853,11 @@ def link_profiles():
     _rebind_team_json(db, str(source_tg), str(target_tg))
     _rebind_rating_logs(db, str(source_tg), str(target_tg))
     _rebind_interaction_logs(db, str(source_tg), str(target_tg))
+    _drop_player_from_state(state, str(source_tg))
+    if str(target_tg) not in state.players:
+        base = state.base_ratings.get(str(source_tg), TeamConfig().global_start_rating)
+        state.ensure_player(str(target_tg), "Эксперт", float(base), False)
+        state.base_ratings[str(target_tg)] = float(base)
 
     # Переносим кастомные данные
     if not target_user.custom_name and source_user.custom_name:
