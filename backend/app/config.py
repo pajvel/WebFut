@@ -40,4 +40,8 @@ class Config:
     DEFAULT_CONTEXT_ID = int(os.getenv("DEFAULT_CONTEXT_ID", "1"))
     DEFAULT_CONTEXT_TITLE = os.getenv("DEFAULT_CONTEXT_TITLE", "Default")
     UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(BASE_DIR, "uploads"))
-    AUTO_SEED = os.getenv("AUTO_SEED", "1") == "1"
+    AUTO_SEED = os.getenv("AUTO_SEED", "1" if os.getenv("FLASK_ENV", "production") == "development" else "0") == "1"
+    DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "3"))
+    DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "2"))
+    DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+    DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "1800"))

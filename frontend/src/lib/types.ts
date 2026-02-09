@@ -17,6 +17,13 @@
   };
 };
 
+export type MatchesPaging = {
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  next_offset: number | null;
+};
+
 export type MatchParticipant = {
   tg_id: number;
   name: string;
@@ -215,3 +222,4 @@ export type TgUsersResponse = {
   tg_users: TgUser[];
   manual_users: ManualUser[];
 };
+

@@ -53,9 +53,8 @@ export function GoalModal({
   const handleSubmit = (assistOverride?: number | null) => {
     if (!scorer) return;
     const effectiveAssist = assistOverride === undefined ? assist : assistOverride;
+    onOpenChange(false);
     onSubmit({ scorer_tg_id: scorer, assist_tg_id: effectiveAssist });
-    setScorer(null);
-    setAssist(null);
   };
 
   return (
@@ -143,7 +142,10 @@ export function GoalModal({
           </button>
 
           <button
-            onClick={onOwnGoal}
+            onClick={() => {
+              onOpenChange(false);
+              onOwnGoal();
+            }}
             className="w-full h-10 bg-[#ef4444] rounded-lg border-2 border-[var(--border-main)] flex items-center justify-center text-white font-black text-xs uppercase tracking-widest active:scale-95 transition-transform"
           >
             RECORD AS OWN GOAL

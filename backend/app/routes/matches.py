@@ -84,11 +84,20 @@ def _why_text(base_eval: dict, alt_eval: dict) -> str:
 def list_matches():
     user = require_user()
     context_id = request.args.get("context_id", type=int)
+    limit = min(max(request.args.get("limit", type=int) or 50, 1), 100)
+    offset = max(request.args.get("offset", type=int) or 0, 0)
     db = get_db()
     query = db.query(Match)
     if context_id:
         query = query.filter_by(context_id=context_id)
-    matches = query.order_by(Match.created_at.desc()).all()
+    rows = (
+        query.order_by(Match.created_at.desc())
+        .offset(offset)
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    matches = rows[:limit]
     response_matches = []
     for m in matches:
         members = (
@@ -186,7 +195,17 @@ def list_matches():
             }
         )
 
-    return ok({"matches": response_matches})
+    return ok(
+        {
+            "matches": response_matches,
+            "paging": {
+                "limit": limit,
+                "offset": offset,
+                "has_more": has_more,
+                "next_offset": offset + limit if has_more else None,
+            },
+        }
+    )
 
 
 @bp.post("/")

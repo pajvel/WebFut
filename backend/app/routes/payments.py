@@ -7,6 +7,7 @@ from flask import Blueprint, request
 from ..auth import is_admin, require_user
 from ..db import get_db
 from ..models import Match, MatchMember, PaymentInfo, PaymentRequest, PaymentStatus, User
+from ..services.rate_limit import allow as allow_rate
 from ..services.telegram_bot import (
     is_reminder_on_cooldown,
     send_payment_announce,
@@ -176,6 +177,8 @@ def payer_clear(match_id: int):
 @bp.post("/payer/details")
 def payer_details(match_id: int):
     user = require_user()
+    if not allow_rate(f"payer_details:{match_id}:{user.tg_id}", 3):
+        return err("too_many_requests", 429)
     db = get_db()
     info = (
         db.query(PaymentInfo)
@@ -200,13 +203,17 @@ def payer_details(match_id: int):
         if parsed_amount < 0:
             return err("invalid_payer_amount", 400)
         info.payer_amount = parsed_amount
-    info.last_reminder_at = None
     info.status = "details_set"
     new_hash = _announce_hash(info)
-    should_send = info.last_announce_hash != new_hash
+    # Send "payment announced" only once per selected payer session.
+    # Re-saving details should not broadcast again.
+    should_send = info.last_announce_at is None
     if should_send:
         info.last_announce_hash = new_hash
         info.last_announce_at = datetime.utcnow()
+        # After announcing payment details, reminders must be on 1h cooldown.
+        # This prevents immediate "remind" right after "payment announced".
+        info.last_reminder_at = datetime.utcnow()
     db.commit()
     if should_send:
         members = _eligible_payment_members(db, match_id)
@@ -218,6 +225,8 @@ def payer_details(match_id: int):
 @bp.post("/payments/mark-paid")
 def mark_paid(match_id: int):
     user = require_user()
+    if not allow_rate(f"mark_paid:{match_id}:{user.tg_id}", 3):
+        return err("too_many_requests", 429)
     db = get_db()
     status = (
         db.query(PaymentStatus)
@@ -254,6 +263,8 @@ def mark_paid(match_id: int):
 @bp.post("/payments/confirm")
 def confirm_payment(match_id: int):
     user = require_user()
+    if not allow_rate(f"confirm_payment:{match_id}:{user.tg_id}", 2):
+        return err("too_many_requests", 429)
     db = get_db()
     info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
     if info is None or info.payer_tg_id != user.tg_id:
@@ -276,6 +287,8 @@ def confirm_payment(match_id: int):
 @bp.post("/payments/remind")
 def remind_payment(match_id: int):
     user = require_user()
+    if not allow_rate(f"remind_payment:{match_id}:{user.tg_id}", 3):
+        return err("too_many_requests", 429)
     db = get_db()
     info = (
         db.query(PaymentInfo)

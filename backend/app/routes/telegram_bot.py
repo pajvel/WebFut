@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 
@@ -6,6 +6,7 @@ from flask import Blueprint, request
 
 from ..db import get_db
 from ..models import PaymentInfo, PaymentStatus
+from ..services.rate_limit import allow as allow_rate
 from ..services.telegram_bot import answer_callback, send_start
 from ..utils import ok
 
@@ -50,6 +51,10 @@ def webhook():
         payer = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
         if payer is None or payer.payer_tg_id != int(from_user_tg_id):
             answer_callback(callback_id, "Нет доступа")
+            return ok()
+
+        if not allow_rate(f"tg_payment_callback:{match_id}:{from_user_tg_id}", 2):
+            answer_callback(callback_id, "Слишком часто")
             return ok()
 
         payment_status = db.query(PaymentStatus).filter_by(match_id=match_id, tg_id=target_tg_id).one_or_none()

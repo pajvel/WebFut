@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime
@@ -106,8 +106,6 @@ def _keyboard(
 
         rows.append([{"text": text, "callback_data": action}])
     return {"inline_keyboard": rows}
-
-
 
 
 def send_message(
@@ -235,6 +233,8 @@ def send_payment_reminder(
 
 def send_squads_proposed(match_id: int, members: list[MatchMember]) -> None:
     for member in members:
+        if member.role not in ("player", "organizer"):
+            continue
         send_message(
             member.tg_id,
             SQUADS_PROPOSED_TEXT,

@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+﻿from flask import Blueprint, request
 from datetime import datetime
 import hashlib
 import json
@@ -6,6 +6,7 @@ import json
 from ..auth import is_admin, require_user
 from ..db import get_db
 from ..models import Match, MatchMember, TeamCurrent, TeamVariant, User
+from ..services.rate_limit import allow as allow_rate
 from ..services.model_state import load_state, save_state
 from ..services.telegram_bot import send_squads_proposed
 from ..utils import err, ok
@@ -36,7 +37,6 @@ def _why_text(base_eval: dict, alt_eval: dict) -> str:
     if alt_eval["components"]["top"] > base_eval["components"]["top"]:
         reasons.append("слишком сильные игроки в одной команде")
     return ", ".join(reasons) or "слегка хуже по общему балансу"
-
 
 def _normalize_team_payload(data: dict) -> dict | None:
     teams = data.get("teams") or {}
@@ -162,6 +162,8 @@ def _maybe_send_squads_proposed(db, match_id: int, teams_json: dict) -> None:
 @bp.post("/generate")
 def generate(match_id: int):
     user = require_user()
+    if not allow_rate(f"teams_generate:{match_id}:{user.tg_id}", 2):
+        return err("too_many_requests", 429)
     db = get_db()
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
@@ -268,6 +270,8 @@ def cancel(match_id: int):
 @bp.post("/select")
 def select(match_id: int):
     user = require_user()
+    if not allow_rate(f"teams_select:{match_id}:{user.tg_id}", 1):
+        return err("too_many_requests", 429)
     db = get_db()
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
@@ -322,6 +326,8 @@ def select(match_id: int):
 @bp.post("/custom")
 def set_custom(match_id: int):
     user = require_user()
+    if not allow_rate(f"teams_custom:{match_id}:{user.tg_id}", 1):
+        return err("too_many_requests", 429)
     db = get_db()
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
@@ -394,7 +400,7 @@ def set_custom(match_id: int):
     if match.status not in ("finished", "live"):
         match.status = "generating"
     db.commit()
-    if bool(data.get("notify")):
+    if bool(data.get("notify")) and allow_rate(f"squads_notify:{match_id}", 60):
         _maybe_send_squads_proposed(db, match_id, current.current_teams_json if current else teams)
     return ok({"why_text": why_text, "power": _power_metrics(state, teams, match.venue)})
 
@@ -423,3 +429,6 @@ def revert(match_id: int):
     current.why_now_worse_text = None
     db.commit()
     return ok()
+
+
+

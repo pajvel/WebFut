@@ -86,6 +86,7 @@ def create_app() -> Flask:
         return {"ok": False, "error": str(exc)}, 401
 
     ensure_schema()
-    seed_if_empty()
+    if Config.AUTO_SEED:
+        seed_if_empty()
 
     return app

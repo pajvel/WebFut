@@ -21,6 +21,9 @@ export function MatchesFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [venue, setVenue] = useState(venueOptions[0].value);
   const [scheduledDate, setScheduledDate] = useState(() => {
     const now = new Date();
@@ -36,27 +39,49 @@ export function MatchesFeed() {
   useEffect(() => {
     let alive = true;
 
-    const loadMatches = async () => {
+    const loadMatches = async (opts?: { append?: boolean; offset?: number }) => {
       try {
-        const data = await fetchMatches();
+        const offset = opts?.offset ?? 0;
+        const data = await fetchMatches({ limit: 30, offset });
         if (alive) {
-          setMatches(data?.matches || []);
+          const items = data?.matches || [];
+          setMatches((prev) => {
+            if (!opts?.append) return items;
+            const seen = new Set(prev.map((m) => m.id));
+            const merged = [...prev];
+            for (const item of items) {
+              if (!seen.has(item.id)) merged.push(item);
+            }
+            return merged;
+          });
+          setHasMore(Boolean(data?.paging?.has_more));
+          setNextOffset(data?.paging?.next_offset ?? null);
           setLoading(false);
+          setLoadingMore(false);
         }
       } catch (err) {
         if (alive) {
           setError(formatApiError(err));
           setLoading(false);
+          setLoadingMore(false);
         }
       }
     };
 
     loadMatches();
-    const interval = setInterval(loadMatches, 5000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      loadMatches();
+    }, 10000);
+    const onVisible = () => {
+      if (!document.hidden) loadMatches();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       alive = false;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -93,8 +118,10 @@ export function MatchesFeed() {
         venue,
         scheduled_at: scheduledAt ? scheduledAt.toISOString() : null
       });
-      const data = await fetchMatches();
+      const data = await fetchMatches({ limit: 30, offset: 0 });
       setMatches(data?.matches || []);
+      setHasMore(Boolean(data?.paging?.has_more));
+      setNextOffset(data?.paging?.next_offset ?? null);
       setSheetOpen(false);
       setScheduledDate("");
       setScheduledTime("");
@@ -148,6 +175,38 @@ export function MatchesFeed() {
           {finishedMatches.map((match) => (
             <MatchCard key={match.id} match={match} />
           ))}
+          {hasMore ? (
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={async () => {
+                if (nextOffset === null) return;
+                setLoadingMore(true);
+                try {
+                  const data = await fetchMatches({ limit: 30, offset: nextOffset });
+                  const items = data?.matches || [];
+                  setMatches((prev) => {
+                    const seen = new Set(prev.map((m) => m.id));
+                    const merged = [...prev];
+                    for (const item of items) {
+                      if (!seen.has(item.id)) merged.push(item);
+                    }
+                    return merged;
+                  });
+                  setHasMore(Boolean(data?.paging?.has_more));
+                  setNextOffset(data?.paging?.next_offset ?? null);
+                } catch (err) {
+                  setError(formatApiError(err));
+                } finally {
+                  setLoadingMore(false);
+                }
+              }}
+              className="mt-4 w-full h-10 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform disabled:opacity-50"
+              style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+            >
+              {loadingMore ? t("Загрузка...") : t("Показать еще")}
+            </button>
+          ) : null}
         </section>
       </main>
 

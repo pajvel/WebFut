@@ -190,11 +190,21 @@ export function TeamVariants() {
     };
     
     loadMatchData();
-    
-    // Держим polling для real-time обновлений.
-    const interval = setInterval(loadMatchData, 3000); // Обновление каждые 3 секунды.
-    
-    return () => clearInterval(interval);
+
+    // Keep syncing, but with lower pressure on weak VPS.
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      loadMatchData();
+    }, 6000);
+    const onVisible = () => {
+      if (!document.hidden) loadMatchData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [matchId, generatedParam, hasGenerated]);
 
   useEffect(() => {
