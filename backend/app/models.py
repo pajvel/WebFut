@@ -85,6 +85,8 @@ class TeamCurrent(Base):
     current_teams_json = Column(JSONB, nullable=False)
     is_custom = Column(Boolean, nullable=False, default=False)
     why_now_worse_text = Column(Text, nullable=True)
+    last_notify_at = Column(DateTime, nullable=True)
+    last_notify_hash = Column(Text, nullable=True)
 
 
 class Segment(Base):
@@ -120,6 +122,10 @@ class PaymentInfo(Base):
     payer_phone = Column(String, nullable=True)
     payer_fio = Column(String, nullable=True)
     payer_bank = Column(String, nullable=True)
+    payer_amount = Column(Float, nullable=True)
+    last_reminder_at = Column(DateTime, nullable=True)
+    last_announce_at = Column(DateTime, nullable=True)
+    last_announce_hash = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="none")
 
 

@@ -22,7 +22,16 @@ export function MatchesFeed() {
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [venue, setVenue] = useState(venueOptions[0].value);
-  const [scheduledAt, setScheduledAt] = useState("");
+  const [scheduledDate, setScheduledDate] = useState(() => {
+    const now = new Date();
+    return now.toISOString().slice(0, 10);
+  });
+  const [scheduledTime, setScheduledTime] = useState(() => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  });
 
   useEffect(() => {
     let alive = true;
@@ -51,6 +60,16 @@ export function MatchesFeed() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!sheetOpen) return;
+    if (scheduledDate && scheduledTime) return;
+    const now = new Date();
+    setScheduledDate(now.toISOString().slice(0, 10));
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    setScheduledTime(`${hh}:${mm}`);
+  }, [sheetOpen, scheduledDate, scheduledTime]);
+
   const activeMatches = useMemo(
     () => matches.filter((match) => match.status !== "finished"),
     [matches]
@@ -67,14 +86,18 @@ export function MatchesFeed() {
       return;
     }
     try {
+      const nextDate = scheduledDate.trim();
+      const nextTime = scheduledTime.trim() || "00:00";
+      const scheduledAt = nextDate ? new Date(`${nextDate}T${nextTime}`) : null;
       await createMatch({
         venue,
-        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null
+        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null
       });
       const data = await fetchMatches();
       setMatches(data?.matches || []);
       setSheetOpen(false);
-      setScheduledAt("");
+      setScheduledDate("");
+      setScheduledTime("");
     } catch (err) {
       setError(formatApiError(err));
     }
@@ -182,12 +205,22 @@ export function MatchesFeed() {
               style={{ borderColor: "var(--border-main)", background: "var(--bg-surface)", color: "var(--text-main)" }}
             >
               <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">{t("Дата и время")}</div>
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(event) => setScheduledAt(event.target.value)}
-                className="mt-3 w-full bg-transparent border-0 px-0 text-base font-black uppercase tracking-tight text-current focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(event) => setScheduledDate(event.target.value)}
+                  className="w-full bg-transparent border-0 px-0 text-base font-black uppercase tracking-tight text-current placeholder:text-zinc-600 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  placeholder="Дата"
+                />
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(event) => setScheduledTime(event.target.value)}
+                  className="w-full bg-transparent border-0 px-0 text-base font-black uppercase tracking-tight text-current placeholder:text-zinc-600 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  placeholder="Время"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

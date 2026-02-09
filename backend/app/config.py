@@ -29,6 +29,7 @@ _load_env()
 class Config:
     DATABASE_URL = os.getenv("DATABASE_URL", "")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_WEBAPP_URL = os.getenv("TELEGRAM_WEBAPP_URL", "")
     ADMIN_TG_ID = int(os.getenv("ADMIN_TG_ID", "0"))
     MODEL_STATE_TABLE = os.getenv("MODEL_STATE_TABLE", "model_states")
     SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "0") == "1"

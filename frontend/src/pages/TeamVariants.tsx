@@ -386,7 +386,8 @@ export function TeamVariants() {
           base_variant_no: selectedRef.current,
           teams: payloadTeams,
           A: payloadTeams.A,
-          B: payloadTeams.B
+          B: payloadTeams.B,
+          notify: true
         } as unknown as { base_variant_no: number; teams: TeamState; A?: string[]; B?: string[] });
         dirtyRef.current = false;
       }

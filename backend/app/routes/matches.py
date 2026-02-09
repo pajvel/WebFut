@@ -239,10 +239,14 @@ def join_match(match_id: int):
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
         return err("match_not_found", 404)
+    if match.status == "generating":
+        return err("match_generating", 400)
     member = _require_member(db, match_id, user.tg_id)
     if member is None:
         member = MatchMember(match_id=match_id, tg_id=user.tg_id, role="player", can_edit=False)
         db.add(member)
+    elif member.role == "spectator":
+        member.role = "player"
     db.commit()
     return ok()
 
@@ -258,6 +262,8 @@ def spectate_match(match_id: int):
     if member is None:
         member = MatchMember(match_id=match_id, tg_id=user.tg_id, role="spectator", can_edit=False)
         db.add(member)
+    elif member.role == "player":
+        member.role = "spectator"
     db.commit()
     return ok()
 
@@ -285,7 +291,8 @@ def finish_match(match_id: int):
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
         return err("match_not_found", 404)
-    if not _require_admin_or_organizer(db, match, user):
+    member = _require_member(db, match_id, user.tg_id)
+    if not (is_admin(user) or (member and member.can_edit) or _require_admin_or_organizer(db, match, user)):
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
     finish_segment(db, match_id, is_butt_game=bool(data.get("is_butt_game", False)))
@@ -707,6 +714,7 @@ def get_match(match_id: int):
                         "payer_phone": payer_info.payer_phone,
                         "payer_fio": payer_info.payer_fio,
                         "payer_bank": payer_info.payer_bank,
+                        "payer_amount": payer_info.payer_amount,
                         "status": payer_info.status,
                     }
                     if payer_info

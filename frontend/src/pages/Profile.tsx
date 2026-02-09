@@ -29,6 +29,8 @@ const emptyStats: ProfileStats = {
   mvp: 0
 };
 
+const PROFILE_CACHE_KEY = "profile_cache_v1";
+
 export type ProfileMatch = {
   id: number;
   opponent: string;
@@ -132,12 +134,35 @@ export function Profile() {
   const editOpen = searchParams.get("view") === "edit";
 
   useEffect(() => {
+    const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as {
+          stats?: ProfileStats;
+          rating?: ProfileRating | null;
+          history?: ProfileHistoryItem[];
+        };
+        if (parsed.stats) setStats(parsed.stats);
+        if (parsed.rating !== undefined) setRating(parsed.rating);
+        if (parsed.history) setHistory(parsed.history);
+      } catch {
+        localStorage.removeItem(PROFILE_CACHE_KEY);
+      }
+    }
     Promise.allSettled([getProfile(), getLeaderboard()]).then((results) => {
       const [profileResult, leaderboardResult] = results;
       if (profileResult.status === "fulfilled") {
         setStats(profileResult.value?.stats || emptyStats);
         setRating(profileResult.value?.rating || null);
         setHistory(profileResult.value?.history || []);
+        localStorage.setItem(
+          PROFILE_CACHE_KEY,
+          JSON.stringify({
+            stats: profileResult.value?.stats || emptyStats,
+            rating: profileResult.value?.rating || null,
+            history: profileResult.value?.history || []
+          })
+        );
       } else {
         setError(formatApiError(profileResult.reason));
       }

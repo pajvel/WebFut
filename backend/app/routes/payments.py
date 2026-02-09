@@ -1,10 +1,18 @@
 from datetime import datetime
+import hashlib
+import json
 
 from flask import Blueprint, request
 
 from ..auth import is_admin, require_user
 from ..db import get_db
-from ..models import Match, MatchMember, PaymentInfo, PaymentRequest, PaymentStatus
+from ..models import Match, MatchMember, PaymentInfo, PaymentRequest, PaymentStatus, User
+from ..services.telegram_bot import (
+    is_reminder_on_cooldown,
+    send_payment_announce,
+    send_payment_marked_with_target,
+    send_payment_reminder,
+)
 from ..utils import err, ok
 
 bp = Blueprint("payments", __name__, url_prefix="/matches/<int:match_id>")
@@ -17,6 +25,32 @@ def _require_organizer(db, match_id: int, tg_id: int) -> bool:
         .one_or_none()
     )
     return member is not None
+
+
+def _eligible_payment_members(db, match_id: int) -> list[MatchMember]:
+    return (
+        db.query(MatchMember)
+        .filter(
+            MatchMember.match_id == match_id,
+            MatchMember.role.in_(["player", "organizer"]),
+        )
+        .all()
+    )
+
+
+def _announce_hash(info: PaymentInfo) -> str:
+    payload = json.dumps(
+        {
+            "payer_tg_id": info.payer_tg_id,
+            "payer_phone": info.payer_phone,
+            "payer_fio": info.payer_fio,
+            "payer_bank": info.payer_bank,
+            "payer_amount": info.payer_amount,
+        },
+        sort_keys=True,
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @bp.post("/payer/request")
@@ -130,6 +164,10 @@ def payer_clear(match_id: int):
     info.payer_phone = None
     info.payer_fio = None
     info.payer_bank = None
+    info.payer_amount = None
+    info.last_announce_at = None
+    info.last_announce_hash = None
+    info.last_reminder_at = None
     info.status = "none"
     db.commit()
     return ok()
@@ -139,15 +177,41 @@ def payer_clear(match_id: int):
 def payer_details(match_id: int):
     user = require_user()
     db = get_db()
-    info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
+    info = (
+        db.query(PaymentInfo)
+        .filter_by(match_id=match_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if info is None or info.payer_tg_id != user.tg_id:
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
     info.payer_phone = data.get("payer_phone")
     info.payer_fio = data.get("payer_fio")
     info.payer_bank = data.get("payer_bank")
+    amount = data.get("payer_amount")
+    if amount in (None, ""):
+        info.payer_amount = None
+    else:
+        try:
+            parsed_amount = float(amount)
+        except (TypeError, ValueError):
+            return err("invalid_payer_amount", 400)
+        if parsed_amount < 0:
+            return err("invalid_payer_amount", 400)
+        info.payer_amount = parsed_amount
+    info.last_reminder_at = None
     info.status = "details_set"
+    new_hash = _announce_hash(info)
+    should_send = info.last_announce_hash != new_hash
+    if should_send:
+        info.last_announce_hash = new_hash
+        info.last_announce_at = datetime.utcnow()
     db.commit()
+    if should_send:
+        members = _eligible_payment_members(db, match_id)
+        payer_user = db.query(User).filter_by(tg_id=user.tg_id).one_or_none()
+        send_payment_announce(match_id=match_id, payer_user=payer_user, payer_info=info, members=members)
     return ok()
 
 
@@ -155,14 +219,35 @@ def payer_details(match_id: int):
 def mark_paid(match_id: int):
     user = require_user()
     db = get_db()
-    status = db.query(PaymentStatus).filter_by(match_id=match_id, tg_id=user.tg_id).one_or_none()
+    status = (
+        db.query(PaymentStatus)
+        .filter_by(match_id=match_id, tg_id=user.tg_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if status is None:
         status = PaymentStatus(match_id=match_id, tg_id=user.tg_id, status="reported_paid")
         db.add(status)
     else:
+        if status.status == "reported_paid":
+            db.commit()
+            return ok()
         status.status = "reported_paid"
     status.updated_at = datetime.utcnow()
     db.commit()
+
+    info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
+    if info and info.payer_tg_id and info.payer_tg_id != user.tg_id:
+        members = _eligible_payment_members(db, match_id)
+        split_count = len(members)
+        amount = (info.payer_amount / split_count) if (info.payer_amount is not None and split_count > 0) else None
+        send_payment_marked_with_target(
+            match_id=match_id,
+            payer_tg_id=info.payer_tg_id,
+            target_tg_id=user.tg_id,
+            user_name=user.custom_name or user.tg_name,
+            amount=amount,
+        )
     return ok()
 
 
@@ -186,3 +271,46 @@ def confirm_payment(match_id: int):
     status.updated_at = datetime.utcnow()
     db.commit()
     return ok()
+
+
+@bp.post("/payments/remind")
+def remind_payment(match_id: int):
+    user = require_user()
+    db = get_db()
+    info = (
+        db.query(PaymentInfo)
+        .filter_by(match_id=match_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if info is None or info.payer_tg_id != user.tg_id:
+        return err("forbidden", 403)
+    if info.payer_amount is None:
+        return err("missing_payer_amount", 400)
+
+    now = datetime.utcnow()
+    if is_reminder_on_cooldown(info.last_reminder_at, now):
+        return err("reminder_cooldown", 429)
+
+    statuses = {
+        item.tg_id: item.status
+        for item in db.query(PaymentStatus).filter_by(match_id=match_id).all()
+    }
+    recipients = []
+    for member in _eligible_payment_members(db, match_id):
+        if member.tg_id == user.tg_id:
+            continue
+        if statuses.get(member.tg_id) == "confirmed":
+            continue
+        recipients.append(member)
+
+    info.last_reminder_at = now
+    db.commit()
+
+    sent_count = send_payment_reminder(
+        match_id=match_id,
+        payer_user=db.query(User).filter_by(tg_id=user.tg_id).one_or_none(),
+        amount=info.payer_amount,
+        members=recipients,
+    )
+    return ok({"sent": sent_count})

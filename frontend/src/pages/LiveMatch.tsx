@@ -201,7 +201,10 @@ export function LiveMatch() {
       myMember?.role === "spectator" ||
       myMember?.can_edit)
   );
-  const isOrganizer = !!(data && (data.me.is_admin || myMember?.role === "organizer"));
+  const canManageMatch = !!(
+    data &&
+    (data.me.is_admin || myMember?.role === "organizer" || myMember?.can_edit)
+  );
 
   const teamMembers = (team: "A" | "B") => {
     if (!data) return [];
@@ -213,6 +216,13 @@ export function LiveMatch() {
   };
 
   const errorToast = error ? <StatusCard title={t("Ошибка")} message={error} onClose={() => setError(null)} /> : null;
+
+  const [confirmAction, setConfirmAction] = useState<
+    | null
+    | { type: "finish" }
+    | { type: "new_segment" }
+    | { type: "delete_segment"; segmentId: number }
+  >(null);
 
   if (!data) {
     return (
@@ -406,10 +416,10 @@ export function LiveMatch() {
                   const segDragging = segmentDraggingId === item.id;
                   return (
                     <div key={`seg-${item.seg_no}-${idx}`} className="relative h-12 overflow-hidden">
-                      {isOrganizer ? (
+                      {canManageMatch ? (
                         <div className="absolute right-0 top-0 h-12 w-16 flex items-center justify-center z-0">
                           <button
-                            onClick={() => handleDeleteSegment(item.id)}
+                            onClick={() => setConfirmAction({ type: "delete_segment", segmentId: item.id })}
                             className="h-8 w-8 rounded-lg border-2 border-[var(--border-main)] flex items-center justify-center bg-[#ef4444] text-white"
                           >
                             ✕
@@ -418,7 +428,7 @@ export function LiveMatch() {
                       ) : null}
                       <div
                         onPointerDown={(e) => {
-                          if (!isOrganizer) return;
+                          if (!canManageMatch) return;
                           if (!e.isPrimary) return;
                           e.currentTarget.setPointerCapture(e.pointerId);
                           segmentDragRef.current = {
@@ -592,17 +602,17 @@ export function LiveMatch() {
         </div>
       </div>
 
-      {isOrganizer ? (
+      {canManageMatch ? (
         <div className="flex-none p-4 bg-[var(--bg-surface)] border-t-2 border-[var(--border-main)] z-20">
           <div className="flex gap-3">
             <button
-              onClick={() => finishMatch(Number(matchId), buttMode)}
+              onClick={() => setConfirmAction({ type: "finish" })}
               className="flex-[3] bg-[var(--bg-contrast)] text-[var(--text-contrast)] h-16 rounded-2xl text-xl font-black italic tracking-tighter uppercase active:scale-95 transition-transform flex items-center justify-center border-2 border-[var(--border-main)]"
             >
               FINISH GAME
             </button>
             <button
-              onClick={() => newSegment(Number(matchId), buttMode).then(load)}
+              onClick={() => setConfirmAction({ type: "new_segment" })}
               className="flex-1 bg-[var(--bg-surface)] text-[var(--text-main)] h-16 rounded-2xl text-[10px] font-black uppercase border-2 border-[var(--border-main)] active:scale-95 transition-transform flex items-center justify-center tracking-widest leading-none text-center"
             >
               RESET
@@ -642,7 +652,7 @@ export function LiveMatch() {
               </button>
             </div>
             <div className="space-y-2">
-              {spectators.length ? (
+            {spectators.length ? (
                 spectators.map((s) => (
                   <div
                     key={s.tg_id}
@@ -651,7 +661,7 @@ export function LiveMatch() {
                     <Link to={playerPath(s.tg_id)} className="text-[10px] font-black uppercase tracking-widest text-[var(--text-main)] hover:underline underline-offset-2">
                       {s.name}
                     </Link>
-                    {isOrganizer ? (
+                    {canManageMatch ? (
                       <button
                         onClick={async () => {
                           if (!matchId) return;
@@ -678,6 +688,52 @@ export function LiveMatch() {
                   No spectators
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {confirmAction ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
+          <div className="w-full max-w-[320px] bg-[var(--bg-surface)] border-2 border-[var(--border-main)] rounded-[2rem] p-6">
+            <h3 className="font-black italic uppercase text-lg text-[var(--text-main)] mb-4">
+              {confirmAction.type === "finish"
+                ? "ЗАВЕРШИТЬ МАТЧ?"
+                : confirmAction.type === "new_segment"
+                  ? "СОЗДАТЬ НОВЫЙ СЕГМЕНТ?"
+                  : "УДАЛИТЬ СЕГМЕНТ?"}
+            </h3>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                onClick={async () => {
+                  if (!matchId) return;
+                  try {
+                    if (confirmAction.type === "finish") {
+                      await finishMatch(Number(matchId), buttMode);
+                    } else if (confirmAction.type === "new_segment") {
+                      await newSegment(Number(matchId), buttMode);
+                      load();
+                    } else if (confirmAction.type === "delete_segment") {
+                      await deleteSegment(Number(matchId), confirmAction.segmentId);
+                      load();
+                    }
+                    setConfirmAction(null);
+                  } catch (err) {
+                    setConfirmAction(null);
+                    setError(formatApiError(err));
+                  }
+                }}
+                className="w-full h-11 rounded-xl font-black uppercase tracking-widest text-[10px]"
+                style={{ background: "var(--bg-contrast)", color: "var(--text-contrast)" }}
+              >
+                ПОДТВЕРДИТЬ
+              </button>
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="w-full h-11 rounded-xl border-2 font-black uppercase tracking-widest text-[10px]"
+                style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+              >
+                ОТМЕНА
+              </button>
             </div>
           </div>
         </div>

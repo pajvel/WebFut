@@ -8,6 +8,7 @@ import {
   markPaid,
   payerDetails,
   payerSelect,
+  remindPayments,
   submitFeedback
 } from "../lib/api";
 import type { MatchDetail, MatchMember, MatchEvent as ApiMatchEvent } from "../lib/types";
@@ -18,9 +19,9 @@ import { useMatText } from "../lib/mode18";
 import { formatVenueLabel } from "../lib/venue";
 
 enum MatchTab {
-  RESULT = "ИТОГ",
-  EVENTS = "СОБЫТИЯ",
-  BEST = "ЛУЧШИЕ"
+  RESULT = "РРўРћР“",
+  EVENTS = "РЎРћР‘Р«РўРРЇ",
+  BEST = "Р›РЈР§РЁРР•"
 }
 
 type PaymentStatusLabel = "unpaid" | "reported_paid" | "confirmed" | "rejected" | "pending";
@@ -63,10 +64,13 @@ type MatchDataUi = {
   teamB: Player[];
   events: MatchEventUi[];
   payer: {
+    payerTgId: number | null;
     payerName: string;
     fio: string;
     phone: string;
     bank: string;
+    amount: number | null;
+    perPerson: number | null;
   };
 };
 
@@ -99,11 +103,11 @@ const formatStatus = (status: MatchDetail["match"]["status"]) => {
 };
 
 const paymentStatusLabel = (status: PaymentStatusLabel) => {
-  if (status === "reported_paid") return "ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ";
-  if (status === "confirmed") return "ПОДТВЕРЖДЕНО";
-  if (status === "rejected") return "ОТКЛОНЕНО";
-  if (status === "pending") return "В ОБРАБОТКЕ";
-  return "НЕ ОПЛАЧЕНО";
+  if (status === "reported_paid") return "РћР–РР”РђР•Рў РџРћР”РўР’Р•Р Р–Р”Р•РќРРЇ";
+  if (status === "confirmed") return "РџРћР”РўР’Р•Р Р–Р”Р•РќРћ";
+  if (status === "rejected") return "РћРўРљР›РћРќР•РќРћ";
+  if (status === "pending") return "Р’ РћР‘Р РђР‘РћРўРљР•";
+  return "РќР• РћРџР›РђР§Р•РќРћ";
 };
 
 const getInitials = (name: string) => {
@@ -125,7 +129,7 @@ export function FinishedMatch() {
   const [data, setData] = useState<MatchDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timerTick, setTimerTick] = useState(0);
-  const [payerForm, setPayerForm] = useState({ fio: "", phone: "", bank: "" });
+  const [payerForm, setPayerForm] = useState({ fio: "", phone: "", bank: "", amount: "" });
   const [reportOpen, setReportOpen] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [payerSelectOpen, setPayerSelectOpen] = useState(false);
@@ -209,7 +213,8 @@ export function FinishedMatch() {
     setPayerForm({
       fio: data.payments.payer.payer_fio || "",
       phone: data.payments.payer.payer_phone || "",
-      bank: data.payments.payer.payer_bank || ""
+      bank: data.payments.payer.payer_bank || "",
+      amount: data.payments.payer.payer_amount == null ? "" : String(data.payments.payer.payer_amount)
     });
   }, [data]);
 
@@ -320,7 +325,7 @@ export function FinishedMatch() {
     let runningB = 0;
 
     const formatSegmentLabel = (segNo: number, isButtGame: boolean) =>
-      isButtGame ? `СЕГМЕНТ ${segNo} • НА ЖОПУ` : `СЕГМЕНТ ${segNo}`;
+      isButtGame ? `РЎР•Р“РњР•РќРў ${segNo} вЂў РќРђ Р–РћРџРЈ` : `РЎР•Р“РњР•РќРў ${segNo}`;
 
     const segmentLabel = new Map<number, string>();
     data.segments.forEach((seg) => {
@@ -347,7 +352,7 @@ export function FinishedMatch() {
         team,
         scoreAfter: `${runningA} : ${runningB}`,
         time: toTime(event.created_at),
-        period: segmentLabel.get(event.segment_id) || "СЕГМЕНТ"
+        period: segmentLabel.get(event.segment_id) || "РЎР•Р“РњР•РќРў"
       };
     };
 
@@ -371,13 +376,24 @@ export function FinishedMatch() {
       teamB: teamMembers.B.map(memberToPlayer),
       events: eventUi,
       payer: {
-        payerName:
-          (payerInfo?.payer_tg_id
+        payerTgId: payerInfo?.payer_tg_id ?? null,
+        payerName:(payerInfo?.payer_tg_id
             ? data.members.find((member) => member.tg_id === payerInfo.payer_tg_id)?.name
-            : null) || "НЕ ВЫБРАН",
+            : null) || "РќР• Р’Р«Р‘Р РђРќ",
         fio: payerInfo?.payer_fio || "вЂ”",
         phone: payerInfo?.payer_phone || "вЂ”",
-        bank: payerInfo?.payer_bank || "вЂ”"
+        bank: payerInfo?.payer_bank || "вЂ”",
+        amount: payerInfo?.payer_amount ?? null,
+        perPerson: (() => {
+          const amount = payerInfo?.payer_amount;
+          if (amount == null) return null;
+          const splitTargets = data.members.filter(
+            (member) =>
+              (member.role === "player" || member.role === "organizer")
+          ).length;
+          if (splitTargets <= 0) return null;
+          return amount / splitTargets;
+        })()
       }
     };
   }, [data, goalsAssists, mvpVotes, payerInfo, playerById, score, teamMembers, teamNames, worstVotes, paymentStatuses]);
@@ -468,12 +484,12 @@ export function FinishedMatch() {
     };
   }, [comparisonPairs, feedback]);
 
-  const errorToast = error ? <StatusCard title={t("Ошибка")} message={error} onClose={() => setError(null)} /> : null;
+  const errorToast = error ? <StatusCard title={t("РћС€РёР±РєР°")} message={error} onClose={() => setError(null)} /> : null;
 
   if (!matchUi) {
     return (
       <>
-        <div className="text-sm text-muted-foreground px-4 py-6">{t("Загрузка...")}</div>
+        <div className="text-sm text-muted-foreground px-4 py-6">{t("Р—Р°РіСЂСѓР·РєР°...")}</div>
         {errorToast}
       </>
     );
@@ -533,14 +549,15 @@ export function FinishedMatch() {
             onSavePayer={async () => {
               if (!matchId) return;
               if (!/^\+7\d{10}$/.test(payerForm.phone)) {
-                setError("Телефон должен быть в формате +79092811654");
+                setError("РўРµР»РµС„РѕРЅ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РІ С„РѕСЂРјР°С‚Рµ +79092811654");
                 return;
               }
               try {
                 await payerDetails(Number(matchId), {
                   payer_fio: payerForm.fio,
                   payer_phone: payerForm.phone,
-                  payer_bank: payerForm.bank
+                  payer_bank: payerForm.bank,
+                  payer_amount: payerForm.amount.trim() === "" ? null : Number(payerForm.amount)
                 });
                 await refreshMatch();
               } catch (err) {
@@ -553,6 +570,14 @@ export function FinishedMatch() {
               try {
                 await markPaid(Number(matchId));
                 await refreshMatch();
+              } catch (err) {
+                setError(formatApiError(err));
+              }
+            }}
+            onRemindPayments={async () => {
+              if (!matchId) return;
+              try {
+                await remindPayments(Number(matchId));
               } catch (err) {
                 setError(formatApiError(err));
               }
@@ -652,7 +677,8 @@ const ResultTab = ({
   setPayerForm,
   onSavePayer,
   onCopyPhone,
-  onMarkPaid
+  onMarkPaid,
+  onRemindPayments
 }: {
   data: MatchDataUi;
   matchId: string;
@@ -671,11 +697,12 @@ const ResultTab = ({
   isOrganizer: boolean;
   myPaymentStatus: PaymentStatusLabel;
   paymentStatuses: { tg_id: number; status: string }[];
-  payerForm: { fio: string; phone: string; bank: string };
-  setPayerForm: (next: { fio: string; phone: string; bank: string }) => void;
+  payerForm: { fio: string; phone: string; bank: string; amount: string };
+  setPayerForm: (next: { fio: string; phone: string; bank: string; amount: string }) => void;
   onSavePayer: () => void;
   onCopyPhone: (value: string) => void;
   onMarkPaid: () => void;
+  onRemindPayments: () => void;
 }) => {
   const [activePicker, setActivePicker] = useState<{
     type: "SINGLE" | "MULTI";
@@ -692,6 +719,13 @@ const ResultTab = ({
     if (!digits.startsWith("7")) digits = `7${digits}`;
     digits = digits.slice(0, 11);
     return `+${digits}`;
+  };
+  const formatMoney = (value: number | null) => {
+    if (value == null || Number.isNaN(value)) return "вЂ”";
+    return new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(value);
   };
 
   const allPlayers = useMemo(
@@ -763,7 +797,7 @@ const ResultTab = ({
         <div className="flex flex-col items-center">
           {data.isLastSegmentButt ? (
             <div className="px-3 py-1 rounded-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[10px] font-black uppercase tracking-wider">
-              НА ЖОПУ
+              РќРђ Р–РћРџРЈ
             </div>
           ) : (
             <div className="text-[10px] font-bold opacity-30 uppercase tracking-tight">{data.location}</div>
@@ -795,7 +829,7 @@ const ResultTab = ({
         </div>
       </section>
 
-      {isPlayer || isAdmin ? (
+            {isPlayer || isAdmin ? (
         <section className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-4 brutal-shadow space-y-4 rounded-[32px] transition-colors">
           <h2 className="text-base font-black italic uppercase leading-none text-[var(--text-main)]">ПЛАТЕЖИ</h2>
           <div className="bg-[var(--bg-page)]/50 p-3 border-2 border-[var(--border-main)] rounded-2xl relative">
@@ -806,7 +840,7 @@ const ResultTab = ({
                   value={payerForm.fio}
                   onChange={(e) => setPayerForm({ ...payerForm, fio: e.target.value })}
                   className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
-                  placeholder="ФИО ПОЛУЧАТЕЛЯ"
+                  placeholder="ФИО"
                 />
                 <input
                   type="tel"
@@ -823,6 +857,29 @@ const ResultTab = ({
                   className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
                   placeholder="БАНК"
                 />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="decimal"
+                    value={payerForm.amount}
+                    onChange={(e) => setPayerForm({ ...payerForm, amount: e.target.value })}
+                    className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 font-black text-xs italic uppercase rounded-lg text-[var(--text-main)]"
+                    placeholder="ОПЛАЧЕНО ЗА ПОЛЕ"
+                  />
+                  <div className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-1.5 rounded-lg">
+                    <div className="text-[8px] font-bold uppercase opacity-50">С ЧЕЛОВЕКА</div>
+                    <div className="font-black text-xs italic leading-none mt-0.5">
+                      {formatMoney(
+                        payerForm.amount.trim() === ""
+                          ? null
+                          : Number(payerForm.amount) /
+                              Math.max(1, data.teamA.concat(data.teamB).length)
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     setIsEditingPayer(false);
@@ -838,6 +895,15 @@ const ResultTab = ({
                 <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ПЛАТЕЛЬЩИК: {data.payer.payerName}</div>
                 <div className="text-[9px] font-bold uppercase opacity-50 mt-1 text-[var(--text-main)]">ФИО: {data.payer.fio}</div>
                 <div className="font-black text-xs italic mt-0.5 text-[var(--text-main)]">{data.payer.phone} ({data.payer.bank})</div>
+                {isPayer ? (
+                  <div className="mt-1 text-[9px] font-bold uppercase opacity-60 text-[var(--text-main)]">
+                    ОПЛАЧЕНО: {formatMoney(data.payer.amount)} • С ЧЕЛОВЕКА: {formatMoney(data.payer.perPerson)}
+                  </div>
+                ) : (
+                  <div className="mt-1 text-[9px] font-bold uppercase opacity-60 text-[var(--text-main)]">
+                    С ЧЕЛОВЕКА: {formatMoney(data.payer.perPerson)}
+                  </div>
+                )}
                 {isPayer ? (
                   <button
                     onClick={() => setIsEditingPayer(true)}
@@ -864,25 +930,43 @@ const ResultTab = ({
           {(isPlayer || isOrganizer) && (
             <div className="flex items-center justify-between gap-3 pt-1">
               <div className="flex-1">
-                <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ВАШ СТАТУС</div>
-                <div
-                  className={`font-black italic uppercase text-xs text-[var(--text-main)] ${
-                    myPaymentStatus === "confirmed"
-                      ? ""
-                      : myPaymentStatus === "rejected"
-                        ? "opacity-70"
-                        : "opacity-60"
-                  }`}
-                >
-                  {paymentStatusLabel(myPaymentStatus)}
-                </div>
+                {isPayer ? (
+                  <>
+                    <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ОПЛАТИЛИ</div>
+                    <div className="font-black italic uppercase text-xs text-[var(--text-main)]">
+                      {paymentStatuses.filter((s) => s.status === "confirmed").length} ИЗ{" "}
+                      {Math.max(
+                        0,
+                        data.teamA.concat(data.teamB).length -
+                          (data.payer?.payerTgId ? 1 : 0)
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[9px] font-bold uppercase opacity-50 text-[var(--text-main)]">ВАШ СТАТУС</div>
+                    <div
+                      className={`font-black italic uppercase text-xs text-[var(--text-main)] ${
+                        myPaymentStatus === "confirmed"
+                          ? ""
+                          : myPaymentStatus === "rejected"
+                            ? "opacity-70"
+                            : "opacity-60"
+                      }`}
+                    >
+                      {paymentStatusLabel(myPaymentStatus)}
+                    </div>
+                  </>
+                )}
               </div>
-              <button
-                onClick={onMarkPaid}
-                className="bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
-              >
-                ОТПРАВИЛ
-              </button>
+              {!isPayer ? (
+                <button
+                  onClick={onMarkPaid}
+                  className="bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
+                >
+                  ОТПРАВИЛ
+                </button>
+              ) : null}
             </div>
           )}
 
@@ -893,6 +977,17 @@ const ResultTab = ({
                 className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
               >
                 ПОДТВЕРДИТЬ ОПЛАТЫ
+              </button>
+            </div>
+          )}
+
+          {isPayer && (
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={onRemindPayments}
+                className="w-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] font-black italic px-5 py-3 brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
+              >
+                НАПОМНИТЬ ОБ ОПЛАТЕ
               </button>
             </div>
           )}
@@ -911,21 +1006,60 @@ const ResultTab = ({
           {/* список оплат показываем только в модалке подтверждения */}
         </section>
       ) : null}
+            </div>
+          )}
+
+          {(isPayer || isAdmin) && (
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={onRequestConfirmPayments}
+                className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic px-5 py-3 border-2 border-[var(--border-main)] brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
+              >
+                РџРћР”РўР’Р•Р Р”РРўР¬ РћРџР›РђРўР«
+              </button>
+            </div>
+          )}
+          {isPayer && (
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={onRemindPayments}
+                className="w-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] font-black italic px-5 py-3 brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
+              >
+                РќРђРџРћРњРќРРўР¬ РћР‘ РћРџР›РђРўР•
+              </button>
+            </div>
+          )}
+
+
+          {isOrganizer && (
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={onRequestSelectPayer}
+                className="w-full border-2 border-[var(--border-main)] bg-[var(--bg-surface)] font-black italic px-5 py-3 brutal-shadow-sm active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all text-[10px] uppercase rounded-xl"
+              >
+                Р’Р«Р‘Р РђРўР¬ РџР›РђРўР•Р›Р¬Р©РРљРђ
+              </button>
+            </div>
+          )}
+
+          {/* СЃРїРёСЃРѕРє РѕРїР»Р°С‚ РїРѕРєР°Р·С‹РІР°РµРј С‚РѕР»СЊРєРѕ РІ РјРѕРґР°Р»РєРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ */}
+        </section>
+      ) : null}
 
       {isPlayer ? (
         <section className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-4 brutal-shadow space-y-8 rounded-[32px] transition-colors">
           <h2 className="text-2xl font-black italic uppercase border-b-4 border-[var(--border-main)] pb-3 text-[var(--text-main)]">
-            ОЦЕНКА МАТЧА
+            РћР¦Р•РќРљРђ РњРђРўР§Рђ
           </h2>
 
         <div className="grid grid-cols-2 gap-4">
           <FeedbackSlot
-            label="MVP (ЛУЧШИЙ)"
+            label="MVP (Р›РЈР§РЁРР™)"
             player={bestPlayer}
             onClick={() => setActivePicker({ type: "SINGLE", target: "BEST", teamFilter: "ALL" })}
           />
           <FeedbackSlot
-            label="LVP (ХУДШИЙ)"
+            label="LVP (РҐРЈР”РЁРР™)"
             player={worstPlayer}
             onClick={() => setActivePicker({ type: "SINGLE", target: "WORST", teamFilter: "ALL" })}
             color="bg-[var(--bg-page)]/50"
@@ -934,7 +1068,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            ДУЭЛИ МАТЧА
+            Р”РЈР­Р›Р РњРђРўР§Рђ
           </div>
           <div className="space-y-2">
             {duelPairs.map((duel) => {
@@ -967,7 +1101,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            ЛУЧШАЯ СВЯЗКА (ВЫБРАТЬ 2)
+            Р›РЈР§РЁРђРЇ РЎР’РЇР—РљРђ (Р’Р«Р‘Р РђРўР¬ 2)
           </div>
           <div className="grid grid-cols-2 gap-4">
             <SynergyBlock
@@ -985,7 +1119,7 @@ const ResultTab = ({
 
         <div className="space-y-3">
           <div className="text-[11px] font-black italic uppercase opacity-50 border-l-4 border-[var(--border-main)] pl-2 text-[var(--text-main)]">
-            ПАРЫ ДОМИНИРОВАНИЯ
+            РџРђР Р« Р”РћРњРРќРР РћР’РђРќРРЇ
           </div>
           <div className="space-y-4">
             <DominationRow
@@ -1008,12 +1142,12 @@ const ResultTab = ({
 
         <div className="grid grid-cols-2 gap-4">
           <FeedbackSlot
-            label="ЛУЧШИЙ АТАКУЮЩИЙ"
+            label="Р›РЈР§РЁРР™ РђРўРђРљРЈР®Р©РР™"
             player={bestAttacker}
             onClick={() => setActivePicker({ type: "SINGLE", target: "ATTACKER", teamFilter: "ALL" })}
           />
           <FeedbackSlot
-            label="ЛУЧШИЙ ЗАЩИТНИК"
+            label="Р›РЈР§РЁРР™ Р—РђР©РРўРќРРљ"
             player={bestDefender}
             onClick={() => setActivePicker({ type: "SINGLE", target: "DEFENDER", teamFilter: "ALL" })}
           />
@@ -1028,7 +1162,7 @@ const ResultTab = ({
           }`}
           disabled={feedbackStatus === "saving"}
         >
-          {feedbackStatus === "saved" ? "СОХРАНЕНО" : feedbackStatus === "saving" ? "ПРИМЕНЯЮ..." : "ПРИМЕНИТЬ ИЗМЕНЕНИЯ"}
+          {feedbackStatus === "saved" ? "РЎРћРҐР РђРќР•РќРћ" : feedbackStatus === "saving" ? "РџР РРњР•РќРЇР®..." : "РџР РРњР•РќРРўР¬ РР—РњР•РќР•РќРРЇ"}
         </button>
         </section>
       ) : null}
@@ -1294,7 +1428,7 @@ const PlayerPickerOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ВЫБРАТЬ ИГРОКА</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">Р’Р«Р‘Р РђРўР¬ РР“Р РћРљРђ</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>
@@ -1332,7 +1466,7 @@ const PlayerPickerOverlay = ({
             onClick={() => onConfirm(selectedIds.map((id) => players.find((p) => p.id === id)).filter(Boolean) as Player[])}
             className="w-full py-4 bg-[var(--bg-contrast)] text-[var(--text-contrast)] font-black italic uppercase rounded-2xl disabled:opacity-20 transition-all border-2 border-[var(--border-main)] brutal-shadow-sm"
           >
-            ПОДТВЕРДИТЬ ВЫБОР ({selectedIds.length}/{config.limit})
+            РџРћР”РўР’Р•Р Р”РРўР¬ Р’Р«Р‘РћР  ({selectedIds.length}/{config.limit})
           </button>
         )}
       </div>
@@ -1556,7 +1690,7 @@ const BestTab = ({ data, mvpCountdown }: { data: MatchDataUi; mvpCountdown: { ho
           <h2 className="text-4xl font-black italic uppercase leading-none tracking-tighter">MVP RACE</h2>
           <div className="flex flex-col items-center">
             <div className="font-black italic text-[14px] uppercase tracking-tight opacity-80 tabular-nums">
-              ДО КОНЦА ОСТАЛОСЬ {mvpCountdown?.hours ?? 0} Ч. {mvpCountdown?.minutes ?? 0} М.
+              Р”Рћ РљРћРќР¦Рђ РћРЎРўРђР›РћРЎР¬ {mvpCountdown?.hours ?? 0} Р§. {mvpCountdown?.minutes ?? 0} Рњ.
             </div>
           </div>
         </div>
@@ -1715,7 +1849,7 @@ const PaymentReportOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ПОДТВЕРДИТЬ ОПЛАТЫ</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">РџРћР”РўР’Р•Р Р”РРўР¬ РћРџР›РђРўР«</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>
@@ -1770,7 +1904,7 @@ const PayerSelectOverlay = ({
     <div className="fixed inset-0 z-[100] bg-[var(--bg-contrast)]/80 flex items-end animate-in fade-in">
       <div className="w-full bg-[var(--bg-surface)] border-t-4 border-[var(--border-main)] rounded-t-[40px] p-6 max-h-[85vh] overflow-y-auto brutal-shadow animate-in slide-in-from-bottom-full">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">ВЫБРАТЬ ПЛАТЕЛЬЩИКА</h3>
+          <h3 className="text-xl font-black italic uppercase text-[var(--text-main)]">Р’Р«Р‘Р РђРўР¬ РџР›РђРўР•Р›Р¬Р©РРљРђ</h3>
           <button onClick={onClose} className="w-10 h-10 border-2 border-[var(--border-main)] flex items-center justify-center font-black rounded-full text-[var(--text-main)]">
             X
           </button>

@@ -101,6 +101,7 @@ export type MatchDetail = {
       payer_phone: string | null;
       payer_fio: string | null;
       payer_bank: string | null;
+      payer_amount?: number | null;
       status: string;
     } | null;
     requests: { tg_id: number; status: string }[];

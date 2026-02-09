@@ -81,6 +81,11 @@ def _get_or_create_user_from_json(user_data: dict) -> User:
 
 def require_user() -> User:
     init_data = get_init_data()
+
+    # DEV MODE: allow full bypass when no initData provided
+    if Config.DEV_AUTH_BYPASS and not init_data:
+        print(f"[AUTH DEV] Bypassing auth, user: {Config.DEV_TG_ID}")
+        return _get_or_create_dev_user()
     
     # DEV MODE: если есть initData но нет hash, парсим напрямую
     if Config.DEV_AUTH_BYPASS and init_data and "hash" not in init_data:

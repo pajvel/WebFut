@@ -39,7 +39,7 @@ def create_app() -> Flask:
         logging.getLogger('urllib3').setLevel(logging.WARNING)
         logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
 
-    from .routes import admin, auth, events, feedback, matches, me, payments, teams
+    from .routes import admin, auth, events, feedback, matches, me, payments, teams, telegram_bot
 
     api_prefix = "/api"
     app.register_blueprint(auth.bp, url_prefix=f"{api_prefix}/auth")
@@ -50,6 +50,7 @@ def create_app() -> Flask:
     app.register_blueprint(payments.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
     app.register_blueprint(feedback.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
     app.register_blueprint(admin.bp, url_prefix=f"{api_prefix}/admin")
+    app.register_blueprint(telegram_bot.bp, url_prefix=api_prefix)
 
     @app.get("/api/health")
     def healthcheck():

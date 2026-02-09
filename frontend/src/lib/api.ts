@@ -170,6 +170,9 @@ export async function customTeams(
     teams: { A: string[]; B: string[] };
     team_name_a?: string;
     team_name_b?: string;
+    notify?: boolean;
+    A?: string[];
+    B?: string[];
   }
 ) {
   return apiFetch<{ why_text: string }>(`/matches/${matchId}/teams/custom`, {
@@ -269,6 +272,7 @@ export async function payerDetails(matchId: number, payload: {
   payer_fio: string;
   payer_phone: string;
   payer_bank: string;
+  payer_amount?: number | null;
 }) {
   return apiFetch(`/matches/${matchId}/payer/details`, {
     method: "POST",
@@ -278,6 +282,10 @@ export async function payerDetails(matchId: number, payload: {
 
 export async function markPaid(matchId: number) {
   return apiFetch(`/matches/${matchId}/payments/mark-paid`, { method: "POST" });
+}
+
+export async function remindPayments(matchId: number) {
+  return apiFetch(`/matches/${matchId}/payments/remind`, { method: "POST" });
 }
 
 export async function confirmPayment(matchId: number, payload: {

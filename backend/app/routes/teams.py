@@ -1,9 +1,13 @@
 from flask import Blueprint, request
+from datetime import datetime
+import hashlib
+import json
 
 from ..auth import is_admin, require_user
 from ..db import get_db
 from ..models import Match, MatchMember, TeamCurrent, TeamVariant, User
 from ..services.model_state import load_state, save_state
+from ..services.telegram_bot import send_squads_proposed
 from ..utils import err, ok
 from team_model.team_model.teamgen import evaluate_split, generate_teams
 
@@ -121,6 +125,38 @@ def _power_metrics(state, teams: dict, venue: str) -> dict:
         "avg_b": _avg(team_b),
         "d_hat": float(eval_split.get("d_hat", 0.0)),
     }
+
+
+def _teams_hash(teams_json: dict) -> str:
+    payload = json.dumps(
+        {
+            "A": sorted([str(x) for x in teams_json.get("A", [])]),
+            "B": sorted([str(x) for x in teams_json.get("B", [])]),
+        },
+        sort_keys=True,
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _maybe_send_squads_proposed(db, match_id: int, teams_json: dict) -> None:
+    current = (
+        db.query(TeamCurrent)
+        .filter_by(match_id=match_id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if current is None:
+        return
+    now = datetime.utcnow()
+    if current.last_notify_at and (now - current.last_notify_at).total_seconds() < 60:
+        return
+    new_hash = _teams_hash(current.current_teams_json)
+    current.last_notify_hash = new_hash
+    current.last_notify_at = now
+    db.commit()
+    members = db.query(MatchMember).filter_by(match_id=match_id).all()
+    send_squads_proposed(match_id, members)
 
 
 @bp.post("/generate")
@@ -358,6 +394,8 @@ def set_custom(match_id: int):
     if match.status not in ("finished", "live"):
         match.status = "generating"
     db.commit()
+    if bool(data.get("notify")):
+        _maybe_send_squads_proposed(db, match_id, current.current_teams_json if current else teams)
     return ok({"why_text": why_text, "power": _power_metrics(state, teams, match.venue)})
 
 

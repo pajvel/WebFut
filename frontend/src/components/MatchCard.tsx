@@ -36,10 +36,13 @@ function formatTime(value: string | null) {
 }
 
 function AvatarStack({ members, align }: { members: { name: string; avatar: string | null }[]; align: "left" | "right" }) {
-  const display = members.slice(0, 5);
+  const total = members.length;
+  const showAll = total <= 5;
+  const visible = showAll ? members : members.slice(0, 4);
+  const overflowCount = total > 5 ? total - 4 : 0;
   return (
-    <div className={`flex items-center ${align === "right" ? "flex-row-reverse" : "flex-row"}`}>
-      {display.map((member, index) => {
+    <div className={`flex items-center ${align === "right" ? "flex-row-reverse" : "flex-row"} overflow-hidden`}>
+      {visible.map((member, index) => {
         const offsetClass = align === "left" ? "-ml-2 first:ml-0" : "-mr-2 first:mr-0";
         return (
           <div
@@ -56,7 +59,7 @@ function AvatarStack({ members, align }: { members: { name: string; avatar: stri
                 src={member.avatar}
                 alt={member.name}
                 className="w-full h-full object-cover rounded-lg"
-                style={{ borderRadius: "0.5rem" }}
+                style={{ borderRadius: "0.5rem", aspectRatio: "1 / 1" }}
               />
             ) : (
               <div
@@ -69,6 +72,18 @@ function AvatarStack({ members, align }: { members: { name: string; avatar: stri
           </div>
         );
       })}
+      {!showAll && overflowCount > 0 ? (
+        <div
+          style={{
+            zIndex: 0,
+            borderRadius: "0.5rem",
+            boxShadow: "0 0 0 2px var(--bg-page)"
+          }}
+          className={`w-8 h-8 rounded-lg border-2 border-[var(--border-main)] bg-[var(--bg-surface)] flex items-center justify-center text-[10px] font-black ${align === "left" ? "-ml-2" : "-mr-2"}`}
+        >
+          +{overflowCount}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -129,6 +144,8 @@ export function MatchCard({ match }: { match: MatchSummary }) {
   const statusLabel = isLive ? "LIVE" : isGenerating ? "GENERATING" : isLobby ? "WAITING" : "FINISHED";
   const statusColor = isLive ? "bg-red-500" : isGenerating ? "bg-green-500" : isLobby ? "bg-amber-500" : "bg-zinc-500";
 
+  const opponentLabel = match.venue?.trim() ? formatVenueLabel(match.venue) : "MATCH";
+
   return (
     <div className="relative mb-6">
       <div
@@ -166,26 +183,20 @@ export function MatchCard({ match }: { match: MatchSummary }) {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between mt-1">
-        <div className="flex flex-col items-start gap-2">
+      <div className="flex items-center justify-between mt-1 overflow-hidden gap-2">
+        <div className="flex flex-col items-start gap-2 min-w-0 flex-1">
           <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">My Team</span>
-          {isLobby ? <AvatarStack members={allPlayers} align="left" /> : <AvatarStack members={teamA} align="left" />}
+          <div className="max-w-[110px] overflow-hidden">
+            {isLobby ? <AvatarStack members={allPlayers} align="left" /> : <AvatarStack members={teamA} align="left" />}
+          </div>
         </div>
 
-        <div className="flex flex-col items-center pt-4">
+        <div className="flex flex-col items-center pt-2 shrink-0 w-[110px]">
           {!isLobby ? (
             <div className="flex items-center gap-1">
-              <span
-                className={`text-4xl font-black ${aScoreClass}`}
-              >
-                {match.score_a}
-              </span>
-              <span className="text-[color:var(--text-main)]/40 text-2xl font-black">:</span>
-              <span
-                className={`text-4xl font-black ${bScoreClass}`}
-              >
-                {match.score_b}
-              </span>
+              <span className={`text-4xl font-black ${aScoreClass}`}>{match.score_a}</span>
+              <span className="text-zinc-700 text-2xl font-black">:</span>
+              <span className={`text-4xl font-black ${bScoreClass}`}>{match.score_b}</span>
             </div>
           ) : (
             <div className="h-10" />
@@ -197,16 +208,22 @@ export function MatchCard({ match }: { match: MatchSummary }) {
           ) : null}
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2 min-w-0 flex-1">
           <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Opponent</span>
-          {isLobby ? <div className="h-10" /> : <AvatarStack members={teamB} align="right" />}
+          {isLobby ? (
+            <div className="h-10" />
+          ) : (
+            <div className="max-w-[110px] overflow-hidden">
+              <AvatarStack members={teamB} align="right" />
+            </div>
+          )}
         </div>
       </div>
 
       <Link to={target} className="flex items-center justify-between border-t pt-3 mt-1 border-[color:var(--border-main)]/10">
         <div className="flex flex-col overflow-hidden">
           <span className="font-black text-sm uppercase italic truncate max-w-[150px] text-[color:var(--text-main)]">
-            IN {formatVenueLabel(match.venue)}
+            VS {opponentLabel}
           </span>
           <div className="flex gap-2 items-center flex-wrap">
             <span className="font-bold text-[11px] uppercase text-[color:var(--text-main)] tracking-tight whitespace-nowrap">

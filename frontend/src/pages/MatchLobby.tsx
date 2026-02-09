@@ -198,6 +198,16 @@ export function MatchLobby() {
     data && payerRequests.some((req) => req.tg_id === data.me.tg_id && req.status === "pending")
   );
   const isPayer = !!(payerInfo && payerInfo.payer_tg_id === data?.me.tg_id);
+  const isParticipant = myRole === "player" || myRole === "organizer";
+  const perPersonAmount = useMemo(() => {
+    if (!data || !payerInfo || payerInfo.payer_amount == null || !payerInfo.payer_tg_id) return null;
+    const splitTargets = data.members.filter(
+      (member) =>
+        (member.role === "player" || member.role === "organizer")
+    ).length;
+    if (splitTargets <= 0) return null;
+    return payerInfo.payer_amount / splitTargets;
+  }, [data, payerInfo]);
   const offerForMe = useMemo(
     () => payerRequests.find((req) => req.tg_id === data?.me.tg_id && req.status === "offered") || null,
     [payerRequests, data]
@@ -387,41 +397,50 @@ export function MatchLobby() {
           </div>
         ) : null}
 
-        <div className="bg-[var(--bg-surface)] p-5 border-2 border-[var(--border-main)] rounded-[2.5rem] shadow-brutal">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex flex-col">
-              <h3 className="font-black italic uppercase text-lg leading-none text-[var(--text-main)]">ПЛАТЕЛЬЩИК</h3>
-              <span className="font-bold text-[8px] opacity-50 uppercase tracking-wider text-[var(--text-main)]">
-                {payerInfo?.payer_tg_id ? `АКТИВНЫЙ: ${payerInfo.payer_fio || payerInfo.payer_tg_id}` : "ОЖИДАЕТ ВЫБОРА"}
+        {isParticipant ? (
+          <div className="bg-[var(--bg-surface)] p-5 border-2 border-[var(--border-main)] rounded-[2.5rem] shadow-brutal">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col">
+                <h3 className="font-black italic uppercase text-lg leading-none text-[var(--text-main)]">ПЛАТЕЛЬЩИК</h3>
+                <span className="font-bold text-[8px] opacity-50 uppercase tracking-wider text-[var(--text-main)]">
+                  {payerInfo?.payer_tg_id
+                    ? `АКТИВНЫЙ: ${payerInfo.payer_fio || players.find((p) => p.tg_id === payerInfo.payer_tg_id)?.name || payerInfo.payer_tg_id}`
+                    : "ОЖИДАЕТ ВЫБОРА"}
+                </span>
+                {perPersonAmount != null ? (
+                  <span className="font-bold text-[8px] opacity-60 uppercase tracking-wider text-[var(--text-main)]">
+                    С ЧЕЛОВЕКА: {new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(perPersonAmount)}
+                  </span>
+                ) : null}
+              </div>
+              <span
+                className={`px-2 py-1 rounded-lg border-2 border-[var(--border-main)] font-black text-[9px] uppercase tracking-tighter ${
+                  payerInfo?.payer_tg_id ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]" : "bg-[var(--bg-page)] text-[var(--text-main)] opacity-50"
+                }`}
+              >
+                {payerInfo?.payer_tg_id ? "ВЫБРАН" : "ОЖИДАНИЕ"}
               </span>
             </div>
-            <span
-              className={`px-2 py-1 rounded-lg border-2 border-[var(--border-main)] font-black text-[9px] uppercase tracking-tighter ${
-                payerInfo?.payer_tg_id ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]" : "bg-[var(--bg-page)] text-[var(--text-main)] opacity-50"
+            <button
+              onClick={() => {
+                if (!isOrganizer) {
+                  if (!hasRequested) {
+                    payerRequest(Number(matchId)).then(load).catch((err) => setError(formatApiError(err)));
+                  }
+                  return;
+                }
+                setShowPayerModal(true);
+              }}
+              className={`w-full py-4 font-black italic uppercase text-sm shadow-brutal active:shadow-none transition-all ${
+                canPayerAction
+                  ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
+                  : "bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)]"
               }`}
             >
-              {payerInfo?.payer_tg_id ? "ВЫБРАН" : "ОЖИДАНИЕ"}
-            </span>
+              {canPayerAction ? "ВЫБРАТЬ ПЛАТЕЛЬЩИКА" : hasRequested ? "ЗАЯВКА ОТПРАВЛЕНА" : "ЗАПРОСИТЬ ПЛАТЕЛЬЩИКА"}
+            </button>
           </div>
-          <button
-            onClick={() => {
-              if (!isOrganizer) {
-                if (!hasRequested) {
-                  payerRequest(Number(matchId)).then(load).catch((err) => setError(formatApiError(err)));
-                }
-                return;
-              }
-              setShowPayerModal(true);
-            }}
-            className={`w-full py-4 font-black italic uppercase text-sm shadow-brutal active:shadow-none transition-all ${
-              canPayerAction
-                ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
-                : "bg-[var(--bg-surface)] border-2 border-[var(--border-main)] text-[var(--text-main)]"
-            }`}
-          >
-            {canPayerAction ? "ВЫБРАТЬ ПЛАТЕЛЬЩИКА" : hasRequested ? "ЗАЯВКА ОТПРАВЛЕНА" : "ЗАПРОСИТЬ ПЛАТЕЛЬЩИКА"}
-          </button>
-        </div>
+        ) : null}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
@@ -434,7 +453,7 @@ export function MatchLobby() {
               </span>
             ) : null}
           </div>
-          {!myRole ? (
+          {!myRole && data.match.status !== "generating" ? (
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleJoin}
@@ -451,6 +470,33 @@ export function MatchLobby() {
                 Войти зрителем
               </button>
             </div>
+          ) : null}
+          {myRole === "spectator" && data.match.status !== "generating" ? (
+            <button
+              onClick={handleJoin}
+              className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px] w-full shadow-brutal"
+              style={{ background: "var(--bg-contrast)", color: "var(--text-contrast)" }}
+            >
+              Войти игроком
+            </button>
+          ) : null}
+          {!myRole && data.match.status === "generating" ? (
+            <button
+              onClick={handleSpectate}
+              className="h-12 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] w-full"
+              style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+            >
+              Войти зрителем
+            </button>
+          ) : null}
+          {myRole ? (
+            <button
+              onClick={handleLeave}
+              className="h-12 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] w-full"
+              style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
+            >
+              Выйти из матча
+            </button>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
             {(data.match.status === "generating" ? spectators : data.members).map((member) => (
@@ -505,6 +551,19 @@ export function MatchLobby() {
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {players.map((member) => (
+              (() => {
+                const req = payerRequests.find((r) => r.tg_id === member.tg_id);
+                const reqLabel =
+                  req?.status === "pending"
+                    ? "ЗАЯВКА"
+                    : req?.status === "offered"
+                      ? "ПРЕДЛОЖЕНО"
+                      : req?.status === "accepted"
+                        ? "ПРИНЯЛ"
+                        : req?.status === "declined"
+                          ? "ОТКАЗ"
+                          : null;
+                return (
               <button
                 key={member.tg_id}
                 onClick={async () => {
@@ -541,6 +600,11 @@ export function MatchLobby() {
                   <div className="font-black italic uppercase text-sm leading-none mb-1">{member.name}</div>
                   <div className="font-bold text-[8px] uppercase tracking-widest opacity-50">ELO ИГРОКА: {member.rating ?? "--"}</div>
                 </div>
+                {reqLabel ? (
+                  <div className="mr-2 px-2 py-1 border-2 border-[var(--border-main)] rounded-lg text-[8px] font-black uppercase">
+                    {reqLabel}
+                  </div>
+                ) : null}
                 {payerInfo?.payer_tg_id === member.tg_id ? (
                   <div className="w-6 h-6 bg-[var(--text-contrast)] text-[var(--text-main)] rounded-full flex items-center justify-center">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
@@ -549,6 +613,8 @@ export function MatchLobby() {
                   </div>
                 ) : null}
               </button>
+                );
+              })()
             ))}
           </div>
           <div className="p-4 bg-[var(--bg-page)] border-t-2 border-[var(--border-main)]">
@@ -613,16 +679,18 @@ export function MatchLobby() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <button
-              className="w-full h-11 rounded-xl font-black uppercase tracking-widest text-[10px]"
-              style={{ background: "var(--bg-contrast)", color: "var(--text-contrast)" }}
-              onClick={async () => {
-                await handleJoin();
-                setJoinOpen(false);
-              }}
-            >
-              {t("Я игрок")}
-            </button>
+            {data.match.status !== "generating" ? (
+              <button
+                className="w-full h-11 rounded-xl font-black uppercase tracking-widest text-[10px]"
+                style={{ background: "var(--bg-contrast)", color: "var(--text-contrast)" }}
+                onClick={async () => {
+                  await handleJoin();
+                  setJoinOpen(false);
+                }}
+              >
+                {t("Я игрок")}
+              </button>
+            ) : null}
             <button
               className="w-full h-11 rounded-xl border-2 font-black uppercase tracking-widest text-[10px]"
               style={{ borderColor: "var(--border-main)", background: "var(--bg-page)", color: "var(--text-main)" }}
@@ -695,3 +763,4 @@ export function MatchLobby() {
     </>
   );
 }
+

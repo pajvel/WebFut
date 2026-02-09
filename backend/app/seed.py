@@ -130,6 +130,26 @@ HISTORICAL_MATCHES = [
 
 def ensure_schema() -> None:
     Base.metadata.create_all(engine)
+    # lightweight migration for legacy DBs
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE payment_info ADD COLUMN IF NOT EXISTS payer_amount DOUBLE PRECISION")
+        )
+        conn.execute(
+            text("ALTER TABLE payment_info ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP")
+        )
+        conn.execute(
+            text("ALTER TABLE payment_info ADD COLUMN IF NOT EXISTS last_announce_at TIMESTAMP")
+        )
+        conn.execute(
+            text("ALTER TABLE payment_info ADD COLUMN IF NOT EXISTS last_announce_hash TEXT")
+        )
+        conn.execute(
+            text("ALTER TABLE team_current ADD COLUMN IF NOT EXISTS last_notify_at TIMESTAMP")
+        )
+        conn.execute(
+            text("ALTER TABLE team_current ADD COLUMN IF NOT EXISTS last_notify_hash TEXT")
+        )
 
 
 def _reset_db() -> None:
