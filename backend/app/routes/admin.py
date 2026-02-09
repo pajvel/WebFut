@@ -594,40 +594,16 @@ def bind_state_player():
         target_tg = int(target_id)
     except ValueError:
         return err("invalid_player_id", 400)
-    if target_tg <= 0:
-        return err("invalid_target_tg_id", 400)
     db = get_db()
-    target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
-    if target_user is None:
-        target_user = User(tg_id=target_tg, tg_name=f"User {target_tg}", tg_avatar=None)
-        db.add(target_user)
-        db.add(UserSettings(tg_id=target_tg))
-        db.commit()
-    state = load_state(db, context_id)
-    _rebind_player(state, str(source_id), str(target_id))
-    _rebind_members(db, source_tg, target_tg)
-    _rebind_feedback(db, source_tg, target_tg, source_id, target_id)
-    _rebind_payments(db, source_tg, target_tg)
-    _rebind_events(db, source_tg, target_tg)
-    _rebind_match_owner(db, source_tg, target_tg)
-    _rebind_team_json(db, source_id, target_id)
-    _rebind_rating_logs(db, source_id, target_id)
-    _rebind_interaction_logs(db, source_id, target_id)
-    _drop_player_from_state(state, source_id)
-    if target_id not in state.players:
-        base = state.base_ratings.get(source_id, TeamConfig().global_start_rating)
-        state.ensure_player(target_id, "Эксперт", float(base), False)
-        state.base_ratings[target_id] = float(base)
-    source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()
-    target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
-    if source_user and target_user:
-        if not target_user.custom_name and source_user.custom_name:
-            target_user.custom_name = source_user.custom_name
-        if not target_user.custom_avatar and source_user.custom_avatar:
-            target_user.custom_avatar = source_user.custom_avatar
-        db.query(UserSettings).filter_by(tg_id=source_tg).delete()
-        db.delete(source_user)
-    save_state(db, context_id, state)
+    try:
+        _bind_profile_to_tg(
+            db,
+            context_id=int(context_id or 1),
+            source_tg=source_tg,
+            target_tg=target_tg,
+        )
+    except ValueError as exc:
+        return err(str(exc), 400)
     db.commit()
     return ok()
 
@@ -854,31 +830,15 @@ def link_profiles():
     if target_user is None or source_user is None:
         return err("users_not_found", 404)
 
-    state = load_state(db, context_id)
-    _rebind_player(state, str(source_tg), str(target_tg))
-    _rebind_members(db, source_tg, target_tg)
-    _rebind_feedback(db, source_tg, target_tg, str(source_tg), str(target_tg))
-    _rebind_payments(db, source_tg, target_tg)
-    _rebind_events(db, source_tg, target_tg)
-    _rebind_match_owner(db, source_tg, target_tg)
-    _rebind_team_json(db, str(source_tg), str(target_tg))
-    _rebind_rating_logs(db, str(source_tg), str(target_tg))
-    _rebind_interaction_logs(db, str(source_tg), str(target_tg))
-    _drop_player_from_state(state, str(source_tg))
-    if str(target_tg) not in state.players:
-        base = state.base_ratings.get(str(source_tg), TeamConfig().global_start_rating)
-        state.ensure_player(str(target_tg), "Эксперт", float(base), False)
-        state.base_ratings[str(target_tg)] = float(base)
-
-    # Переносим кастомные данные
-    if not target_user.custom_name and source_user.custom_name:
-        target_user.custom_name = source_user.custom_name
-    if not target_user.custom_avatar and source_user.custom_avatar:
-        target_user.custom_avatar = source_user.custom_avatar
-
-    db.query(UserSettings).filter_by(tg_id=source_tg).delete()
-    db.delete(source_user)
-    save_state(db, context_id, state)
+    try:
+        _bind_profile_to_tg(
+            db,
+            context_id=context_id,
+            source_tg=source_tg,
+            target_tg=target_tg,
+        )
+    except ValueError as exc:
+        return err(str(exc), 400)
     db.commit()
 
     return ok({"merged": True})

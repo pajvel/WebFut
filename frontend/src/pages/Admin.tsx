@@ -117,7 +117,6 @@ export function Admin() {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   
   // Новые состояния для TG профилей
-  const [showTgProfiles, setShowTgProfiles] = useState(false);
   const [tgUsers, setTgUsers] = useState<TgUser[]>([]);
   const [manualUsers, setManualUsers] = useState<ManualUser[]>([]);
   const [selectedTgUser, setSelectedTgUser] = useState<TgUser | null>(null);
@@ -269,8 +268,8 @@ export function Admin() {
         })
       });
       
-      // Обновляем списки
-      await loadTgProfiles();
+      // Обновляем и линковочные списки, и основную таблицу пользователей.
+      await Promise.all([loadTgProfiles(), loadUsers(), loadState()]);
       setSelectedTgUser(null);
       setSelectedManualUser(null);
     } catch (err) {
@@ -412,13 +411,6 @@ export function Admin() {
     setTeamNameA(current?.name_a || fallback?.name_a || "");
     setTeamNameB(current?.name_b || fallback?.name_b || "");
   }, [matchDetail]);
-
-  // Загружаем TG профили при открытии модалки
-  useEffect(() => {
-    if (showTgProfiles) {
-      loadTgProfiles();
-    }
-  }, [showTgProfiles]);
 
   const displayName = (playerId: string) => {
     const tgId = Number(playerId);
@@ -1035,7 +1027,7 @@ export function Admin() {
     <div className="flex flex-col">
       <div className="mb-6 lg:mb-8 bg-[var(--bg-page)] lg:bg-transparent z-30 pt-1">
         <div className="flex flex-col gap-4 mb-6 border-b border-[var(--border-main)] pb-4">
-          <div className="flex justify-between items-end">
+          <div className="flex justify-between items-center">
             <h1 className="text-4xl font-black uppercase tracking-tighter italic leading-none text-[var(--text-main)]">
               ПОЛЬЗОВАТЕЛИ
             </h1>
@@ -2023,47 +2015,61 @@ export function Admin() {
             ) : null}
 
             {activeTab === "TG_LINK" ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-[var(--border-main)] pb-4">
-                  <h1 className="text-3xl font-black uppercase italic tracking-tighter">TG - ПРОФИЛИ</h1>
-                  <Button onClick={loadTgProfiles} variant="outline">
-                    Обновить
-                  </Button>
+              <div className="space-y-4">
+                <div className="rounded-3xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4 brutal-shadow">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.22em] opacity-50">
+                        ADMIN LINK
+                      </div>
+                      <h1 className="text-2xl font-black italic uppercase leading-none">TG ПРОФИЛИ</h1>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadTgProfiles}
+                      className="rounded-xl border-2 border-[var(--border-main)] bg-[var(--bg-contrast)] px-4 py-2 text-[11px] font-black uppercase text-[var(--text-contrast)] brutal-shadow-sm active:translate-y-[1px]"
+                    >
+                      Обновить
+                    </button>
+                  </div>
                 </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-black uppercase opacity-60">
+                  <div className="rounded-3xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4 brutal-shadow">
+                    <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] opacity-60">
                       TELEGRAM USERS ({safeTgUsers.length})
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[52vh] overflow-y-auto hide-scrollbar pr-1">
                       {safeTgUsers.length === 0 ? (
-                        <div className="text-xs opacity-60">Нет Telegram пользователей</div>
+                        <div className="rounded-2xl border-2 border-dashed border-[var(--border-main)]/40 p-4 text-xs font-black uppercase opacity-60">
+                          Нет Telegram пользователей
+                        </div>
                       ) : (
                         safeTgUsers.map((user) => (
                           <button
                             key={user.tg_id}
                             type="button"
                             onClick={() => setSelectedTgUser(user)}
-                            className={`w-full flex items-center justify-between gap-2 rounded-xl border-2 px-3 py-2 text-left transition-all ${
+                            className={`w-full flex items-center justify-between gap-2 rounded-2xl border-2 px-3 py-3 text-left transition-all ${
                               selectedTgUser?.tg_id === user.tg_id
-                                ? "border-[var(--border-main)] bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
-                                : "border-[var(--border-main)]/40 bg-[var(--bg-surface)]"
+                                ? "border-[var(--text-main)] bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
+                                : "border-[var(--border-main)]/40 bg-[var(--bg-page)]/40"
                             }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               {user.tg_avatar ? (
                                 <img
                                   src={resolveMediaUrl(user.tg_avatar)}
-                                  className="w-8 h-8 rounded-md object-cover grayscale"
+                                  className="w-9 h-9 rounded-lg object-cover"
                                   alt=""
                                 />
                               ) : (
-                                <div className="w-8 h-8 rounded-md border border-current/40 flex items-center justify-center text-[10px] font-black">
+                                <div className="w-9 h-9 rounded-lg border-2 border-current/30 flex items-center justify-center text-[10px] font-black">
                                   {(user.custom_name || user.tg_name || "?").slice(0, 2).toUpperCase()}
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <div className="font-black italic uppercase truncate">
+                                <div className="font-black italic uppercase truncate text-[12px]">
                                   {user.custom_name || user.tg_name}
                                 </div>
                                 <div className="text-[10px] opacity-60">ID: {user.tg_id}</div>
@@ -2074,27 +2080,30 @@ export function Admin() {
                       )}
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-black uppercase opacity-60">
+
+                  <div className="rounded-3xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4 brutal-shadow">
+                    <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] opacity-60">
                       MANUAL USERS ({safeManualUsers.length})
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[52vh] overflow-y-auto hide-scrollbar pr-1">
                       {safeManualUsers.length === 0 ? (
-                        <div className="text-xs opacity-60">Нет ручных профилей</div>
+                        <div className="rounded-2xl border-2 border-dashed border-[var(--border-main)]/40 p-4 text-xs font-black uppercase opacity-60">
+                          Нет ручных профилей
+                        </div>
                       ) : (
                         safeManualUsers.map((user) => (
                           <button
                             key={user.id}
                             type="button"
                             onClick={() => setSelectedManualUser(user)}
-                            className={`w-full flex items-center justify-between gap-2 rounded-xl border-2 px-3 py-2 text-left transition-all ${
+                            className={`w-full flex items-center justify-between gap-2 rounded-2xl border-2 px-3 py-3 text-left transition-all ${
                               selectedManualUser?.id === user.id
-                                ? "border-[var(--border-main)] bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
-                                : "border-[var(--border-main)]/40 bg-[var(--bg-surface)]"
+                                ? "border-[var(--text-main)] bg-[var(--bg-contrast)] text-[var(--text-contrast)]"
+                                : "border-[var(--border-main)]/40 bg-[var(--bg-page)]/40"
                             }`}
                           >
                             <div className="min-w-0">
-                              <div className="font-black italic uppercase truncate">{user.custom_name}</div>
+                              <div className="font-black italic uppercase truncate text-[12px]">{user.custom_name}</div>
                               <div className="text-[10px] opacity-60">ID: {user.id}</div>
                             </div>
                           </button>
@@ -2103,22 +2112,49 @@ export function Admin() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedManualUser(null);
-                      setSelectedTgUser(null);
-                    }}
-                  >
-                    Очистить
-                  </Button>
-                  <Button onClick={linkProfiles} disabled={!selectedTgUser || !selectedManualUser}>
-                    Привязать профили
-                  </Button>
+
+                <div className="rounded-3xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4 brutal-shadow">
+                  <div className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] opacity-60">
+                    Выбрано для привязки
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-2xl border-2 border-[var(--border-main)]/50 bg-[var(--bg-page)]/40 p-3">
+                      <div className="text-[9px] font-black uppercase opacity-50">TELEGRAM</div>
+                      <div className="mt-1 font-black italic uppercase">
+                        {selectedTgUser ? selectedTgUser.custom_name || selectedTgUser.tg_name : "—"}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border-2 border-[var(--border-main)]/50 bg-[var(--bg-page)]/40 p-3">
+                      <div className="text-[9px] font-black uppercase opacity-50">MANUAL</div>
+                      <div className="mt-1 font-black italic uppercase">
+                        {selectedManualUser ? selectedManualUser.custom_name : "—"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-xl border-2 border-[var(--border-main)] bg-[var(--bg-page)] px-4 py-2 text-[11px] font-black uppercase brutal-shadow-sm"
+                      onClick={() => {
+                        setSelectedManualUser(null);
+                        setSelectedTgUser(null);
+                      }}
+                    >
+                      Очистить выбор
+                    </button>
+                    <button
+                      type="button"
+                      onClick={linkProfiles}
+                      disabled={!selectedTgUser || !selectedManualUser}
+                      className="rounded-xl border-2 border-[var(--border-main)] bg-[var(--bg-contrast)] px-4 py-2 text-[11px] font-black uppercase text-[var(--text-contrast)] brutal-shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Связать профили
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
+
             {activeTab === "RATING_LOGS" ? (
               <div className="h-full flex flex-col">
                 <div className="mb-6 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
@@ -3513,119 +3549,6 @@ export function Admin() {
         </div>
       ) : null}
 
-      {/* Модалка для TG профилей */}
-      {showTgProfiles ? (
-        <div
-          className="fixed inset-0 z-[100] bg-[var(--bg-page)]/95 flex items-center justify-center p-4"
-          onClick={() => setShowTgProfiles(false)}
-        >
-          <div
-            className="w-full max-w-5xl border-4 border-[var(--border-main)] bg-[var(--bg-page)] p-8 shadow-2xl max-h-[85vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b-4 border-[var(--bg-contrast)] pb-3 mb-6">
-              <div>
-                <h2 className="text-3xl font-black uppercase italic text-[var(--text-main)]">
-                  УПРАВЛЕНИЕ TELEGRAM ПРОФИЛЯМИ
-                </h2>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-[var(--text-main)]/60 mt-2">
-                  ПРИВЯЖИТЕ РУЧНЫЕ ПРОФИЛИ К АККАУНТАМ TELEGRAM
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTgProfiles(false)}
-                className="h-10 w-10 border-2 border-[var(--border-main)] text-[var(--text-main)] font-black"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[65vh] overflow-auto">
-              <div>
-                <h3 className="font-black uppercase italic text-sm mb-3 text-[var(--text-main)]">
-                  Telegram пользователи ({safeTgUsers.length})
-                </h3>
-                <div className="space-y-2">
-                  {safeTgUsers.length === 0 ? (
-                    <div className="text-[var(--text-main)]/60 text-sm">Нет Telegram пользователей</div>
-                  ) : (
-                    safeTgUsers.map((user) => (
-                      <div
-                        key={user.tg_id}
-                        className={`p-3 border-2 rounded-lg cursor-pointer transition-colors ${
-                          selectedTgUser?.tg_id === user.tg_id
-                            ? "border-[var(--border-main)] bg-[var(--bg-surface)]"
-                            : "border-[var(--border-main)] hover:bg-[var(--bg-surface)]/70"
-                        }`}
-                        onClick={() => setSelectedTgUser(user)}
-                      >
-                        <div className="flex items-center gap-3">
-                          {user.tg_avatar ? (
-                            <img src={user.tg_avatar} alt={user.tg_name} className="w-10 h-10 rounded-full" />
-                          ) : null}
-                          <div>
-                            <div className="font-black uppercase text-[var(--text-main)]">{user.tg_name}</div>
-                            <div className="text-sm text-[var(--text-main)]/60">
-                              {user.custom_name || "Нет кастомного имени"}
-                            </div>
-                            <div className="text-xs text-[var(--text-main)]/60">ID: {user.tg_id}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-black uppercase italic text-sm mb-3 text-[var(--text-main)]">
-                  Ручные профили ({safeManualUsers.length})
-                </h3>
-                <div className="space-y-2">
-                  {safeManualUsers.length === 0 ? (
-                    <div className="text-[var(--text-main)]/60 text-sm">Нет ручных профилей</div>
-                  ) : (
-                    safeManualUsers.map((user) => (
-                      <div
-                        key={user.id}
-                        className={`p-3 border-2 rounded-lg cursor-pointer transition-colors ${
-                          selectedManualUser?.id === user.id
-                            ? "border-[var(--border-main)] bg-[var(--bg-surface)]"
-                            : "border-[var(--border-main)] hover:bg-[var(--bg-surface)]/70"
-                        }`}
-                        onClick={() => setSelectedManualUser(user)}
-                      >
-                        <div>
-                          <div className="font-black uppercase text-[var(--text-main)]">{user.custom_name}</div>
-                          <div className="text-xs text-[var(--text-main)]/60">ID: {user.id}</div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setShowTgProfiles(false)}
-                className="w-full py-3 text-xs font-black uppercase border-2 border-[var(--border-main)] text-[var(--text-main)]"
-              >
-                ОТМЕНА
-              </button>
-              <button
-                type="button"
-                onClick={linkProfiles}
-                disabled={!selectedTgUser || !selectedManualUser}
-                className="w-full py-3 text-xs font-black uppercase bg-[var(--bg-contrast)] text-[var(--text-contrast)] disabled:opacity-50"
-              >
-                ПРИВЯЗАТЬ ПРОФИЛИ
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
