@@ -417,6 +417,17 @@ def create_user():
         db.add(UserSettings(tg_id=tg_id))
     else:
         user.tg_name = name
+
+    # Ensure player appears in admin users table (state-backed).
+    context_id = int(data.get("context_id", 1) or 1)
+    state = load_state(db, context_id)
+    player_id = str(tg_id)
+    if player_id not in state.players:
+        base = float(state.base_ratings.get(player_id, TeamConfig().global_start_rating))
+        state.ensure_player(player_id, "Эксперт", base, False)
+        state.base_ratings[player_id] = base
+        save_state(db, context_id, state)
+
     db.commit()
     return ok({"tg_id": user.tg_id})
 

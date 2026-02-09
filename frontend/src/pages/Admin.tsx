@@ -640,7 +640,21 @@ export function Admin() {
   const sortedPlayers = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
     const getVenue = (player: StatePlayer, venue: string) => getVenueRating(player, venue) ?? 0;
-    return [...statePlayers].sort((a, b) => {
+    const presentIds = new Set(statePlayers.map((player) => String(player.player_id)));
+    const userOnlyPlayers: StatePlayer[] = users
+      .filter((user) => !presentIds.has(String(user.tg_id)))
+      .map((user) => ({
+        player_id: String(user.tg_id),
+        global_rating: 0,
+        base_rating: null,
+        venue_ratings: {},
+        role_tendencies: {},
+        is_guest: false,
+        guest_matches: 0,
+        tier_bonus: 0
+      }));
+    const merged = [...statePlayers, ...userOnlyPlayers];
+    return merged.sort((a, b) => {
       if (sortKey === "name") {
         return displayName(a.player_id).localeCompare(displayName(b.player_id)) * dir;
       }
