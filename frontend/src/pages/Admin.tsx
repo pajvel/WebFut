@@ -85,7 +85,8 @@ type AdminTab =
   | "RATING_LOGS"
   | "POSITION_LOGS"
   | "INTERACTIONS"
-  | "FEEDBACK";
+  | "FEEDBACK"
+  | "THEME_LOGS";
 
 export function Admin() {
   const { me } = useAppContext();
@@ -687,6 +688,13 @@ export function Admin() {
       return voter.includes(needle) || matchLabel.includes(needle);
     });
   }, [feedbackVotesItems, feedbackSearch, users]);
+  const themeLogItems = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const an = (a.custom_name || a.tg_name || "").toLowerCase();
+      const bn = (b.custom_name || b.tg_name || "").toLowerCase();
+      return an.localeCompare(bn);
+    });
+  }, [users]);
   const interactionLogsLatest = useMemo(() => {
     const map = new Map<string, (typeof interactionLogs)[number]>();
     for (const log of interactionLogs) {
@@ -922,7 +930,8 @@ export function Admin() {
     { id: "RATING_LOGS", label: "RATING LOGS" },
     { id: "POSITION_LOGS", label: "POSITION LOGS" },
     { id: "INTERACTIONS", label: "INTERACTIONS" },
-    { id: "FEEDBACK", label: "FEEDBACK LOGS" }
+    { id: "FEEDBACK", label: "FEEDBACK LOGS" },
+    { id: "THEME_LOGS", label: "THEME LOGS" }
   ];
   const handleTabChange = (id: AdminTab) => {
     setActiveTab(id);
@@ -1057,6 +1066,7 @@ export function Admin() {
                 <th className="p-4 border-b border-[var(--border-main)] w-16 text-center">AVA</th>
                 <th className="p-4 border-b border-[var(--border-main)]">ИМЯ</th>
                 <th className="p-4 border-b border-[var(--border-main)]">TG_ID</th>
+                <th className="p-4 border-b border-[var(--border-main)] text-center">ТЕМА</th>
                 <th className="p-4 border-b border-[var(--border-main)] text-center">СПЕЦ.</th>
                 <th className="p-4 border-b border-[var(--border-main)] text-center text-[var(--text-main)]/70">EXP</th>
                 <th className="p-4 border-b border-[var(--border-main)] text-center text-[var(--text-main)]/70">MAR</th>
@@ -1100,6 +1110,11 @@ export function Admin() {
                     </td>
                     <td className="p-4 border-b border-[var(--border-main)] font-mono text-[var(--text-main)]/60 text-xs">
                       {user?.tg_id ?? player.player_id}
+                    </td>
+                    <td className="p-4 border-b border-[var(--border-main)] text-center">
+                      <span className="inline-flex items-center rounded-md border border-[var(--border-main)]/50 px-2 py-0.5 text-[10px] font-black uppercase">
+                        {(user?.theme || "light") === "dark" ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                      </span>
                     </td>
                     <td className="p-4 border-b border-[var(--border-main)] text-center">
                       {attack === 0 && defense === 0 ? (
@@ -1186,6 +1201,9 @@ export function Admin() {
                       <h3 className="font-black uppercase italic text-xl leading-none truncate text-[var(--text-main)]">
                         {displayName(player.player_id)}
                       </h3>
+                      <div className="mt-1 text-[9px] font-black uppercase opacity-60">
+                        ТЕМА: {(user?.theme || "light") === "dark" ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                      </div>
                       <div className="mt-2">
                         {attack === 0 && defense === 0 ? (
                           <span className="text-[var(--text-main)]/50 font-black text-[9px] uppercase italic">СПЕЦ: СРЕДНИЙ</span>
@@ -2414,6 +2432,63 @@ export function Admin() {
                     );
                   })}
                   {filteredFeedbackItems.length === 0 ? (
+                    <div className="py-20 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] uppercase font-black italic opacity-60">
+                      DATABASE EMPTY
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {activeTab === "THEME_LOGS" ? (
+              <div className="h-full flex flex-col">
+                <div className="mb-6 flex items-center justify-between border-b border-[var(--border-main)] pb-3">
+                  <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">THEME LOGS</h1>
+                  <button
+                    type="button"
+                    onClick={loadUsers}
+                    className="border-2 border-[var(--border-main)] bg-[var(--bg-page)] px-4 py-2 text-[11px] font-black uppercase italic"
+                  >
+                    ОБНОВИТЬ
+                  </button>
+                </div>
+
+                <div className="mb-3 text-[10px] font-black uppercase opacity-60 tracking-widest">
+                  ТЕКУЩАЯ ТЕМА У КАЖДОГО ПОЛЬЗОВАТЕЛЯ
+                </div>
+
+                <div className="flex-1 overflow-auto space-y-2 pb-20">
+                  {themeLogItems.map((user) => {
+                    const themeRaw = String(user.theme || "light");
+                    const isDark = themeRaw === "dark";
+                    return (
+                      <div
+                        key={`theme-${user.tg_id}`}
+                        className="bg-[var(--bg-surface)] border border-[var(--border-main)]/60 p-3 hover:border-[var(--border-main)] transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[14px] font-black uppercase italic truncate">
+                              {user.custom_name || user.tg_name || user.tg_id}
+                            </div>
+                            <div className="text-[10px] font-mono opacity-60">TG_ID: {user.tg_id}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`px-2 py-1 text-[10px] font-black uppercase border ${
+                                isDark
+                                  ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)] border-[var(--border-main)]"
+                                  : "bg-[var(--bg-page)] text-[var(--text-main)] border-[var(--border-main)]/60"
+                              }`}
+                            >
+                              {isDark ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                            </span>
+                            <span className="text-[9px] opacity-50 font-mono uppercase">{themeRaw}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {themeLogItems.length === 0 ? (
                     <div className="py-20 text-center border border-dashed border-[var(--border-main)]/40 text-[10px] uppercase font-black italic opacity-60">
                       DATABASE EMPTY
                     </div>
