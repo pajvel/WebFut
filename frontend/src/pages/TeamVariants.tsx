@@ -86,7 +86,7 @@ export function TeamVariants() {
         }
         setData(result);
         
-        // ���� ������ ����� ��������� �� "live", ��������� �� �������� live �����
+        // Если матч уже перешел в "live", сразу редиректим на экран live.
         if (result.match.status === "live") {
           navigate(`/matches/${matchId}/live`);
           return;
@@ -191,8 +191,8 @@ export function TeamVariants() {
     
     loadMatchData();
     
-    // ��������� polling ��� real-time ����������
-    const interval = setInterval(loadMatchData, 3000); // ��������� ������ 3 �������
+    // Держим polling для real-time обновлений.
+    const interval = setInterval(loadMatchData, 3000); // Обновление каждые 3 секунды.
     
     return () => clearInterval(interval);
   }, [matchId, generatedParam, hasGenerated]);
@@ -775,7 +775,7 @@ export function TeamVariants() {
       ) : (
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-[var(--bg-page)] border-t-2 border-[var(--border-main)] z-40">
           <div className="w-full bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-3 font-black uppercase text-[10px] text-center text-[var(--text-main)]">
-            �������� ������� ������������
+            Дождитесь, пока организатор зафиксирует составы
           </div>
         </div>
       )}

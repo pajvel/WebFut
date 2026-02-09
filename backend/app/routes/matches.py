@@ -33,7 +33,7 @@ from team_model.team_model.teamgen import evaluate_split, generate_teams
 
 bp = Blueprint("matches", __name__, url_prefix="/matches")
 
-_VENUE_MAP = {"Р·Р°Р»1": "Р­РєСЃРїРµСЂС‚", "Р·Р°Р»2": "РњР°СЂР°РєР°РЅР°"}
+_VENUE_MAP = {"зал1": "Эксперт", "зал2": "Маракана"}
 
 
 def _display_venue(venue: str | None) -> str | None:
@@ -68,16 +68,16 @@ def _can_edit(db, match_id: int, user_id: int) -> bool:
 def _why_text(base_eval: dict, alt_eval: dict) -> str:
     reasons = []
     if abs(alt_eval["d_hat"]) > abs(base_eval["d_hat"]):
-        reasons.append("Р±РѕР»СЊС€РёР№ СЂР°Р·СЂС‹РІ СЂРµР№С‚РёРЅРіР°")
+        reasons.append("больший разрыв рейтинга")
     if alt_eval["components"]["syn"] > base_eval["components"]["syn"]:
-        reasons.append("Р±РѕР»СЊС€Рµ СЃС‚Р°РєРёРЅРіР° СЃРёРЅРµСЂРіРёРё")
+        reasons.append("больше стакинга синергии")
     if alt_eval["components"]["dom"] > base_eval["components"]["dom"]:
-        reasons.append("Р±РѕР»СЊС€Рµ РґРѕРјРёРЅРёСЂРѕРІР°РЅРёСЏ")
+        reasons.append("больше доминирования")
     if alt_eval["components"]["role"] > base_eval["components"]["role"]:
-        reasons.append("С…СѓР¶Рµ Р±Р°Р»Р°РЅСЃ СЂРѕР»РµР№")
+        reasons.append("хуже баланс ролей")
     if alt_eval["components"]["top"] > base_eval["components"]["top"]:
-        reasons.append("СЃР»РёС€РєРѕРј СЃРёР»СЊРЅС‹Рµ РёРіСЂРѕРєРё РІ РѕРґРЅРѕР№ РєРѕРјР°РЅРґРµ")
-    return ", ".join(reasons) or "СЃР»РµРіРєР° С…СѓР¶Рµ РїРѕ РѕР±С‰РµРјСѓ Р±Р°Р»Р°РЅСЃСѓ"
+        reasons.append("слишком сильные игроки в одной команде")
+    return ", ".join(reasons) or "слегка хуже по общему балансу"
 
 
 @bp.get("/")
