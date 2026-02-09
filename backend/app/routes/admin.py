@@ -196,6 +196,9 @@ def _rebind_members(db, source_tg: int, target_tg: int) -> None:
             db.delete(row)
         else:
             row.tg_id = target_tg
+    invited_rows = db.query(MatchMember).filter_by(invited_by_tg_id=source_tg).all()
+    for row in invited_rows:
+        row.invited_by_tg_id = target_tg
 
 
 def _rebind_feedback(db, source_tg: int, target_tg: int, source_id: str, target_id: str) -> None:
@@ -498,6 +501,10 @@ def delete_user(tg_id: str):
             {"payer_tg_id": None},
             synchronize_session=False,
         )
+        db.query(MatchMember).filter_by(invited_by_tg_id=tg_id_value).update(
+            {"invited_by_tg_id": None},
+            synchronize_session=False,
+        )
         db.query(UserSettings).filter_by(tg_id=tg_id_value).delete(synchronize_session=False)
         if user is not None:
             db.delete(user)
@@ -608,11 +615,17 @@ def bind_state_player():
     except IntegrityError:
         db.rollback()
         return err("bind_conflict", 400)
+    except Exception:
+        db.rollback()
+        return err("bind_failed", 400)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         return err("bind_conflict", 400)
+    except Exception:
+        db.rollback()
+        return err("bind_failed", 400)
     return ok()
 
 
@@ -851,11 +864,17 @@ def link_profiles():
     except IntegrityError:
         db.rollback()
         return err("bind_conflict", 400)
+    except Exception:
+        db.rollback()
+        return err("bind_failed", 400)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         return err("bind_conflict", 400)
+    except Exception:
+        db.rollback()
+        return err("bind_failed", 400)
 
     return ok({"merged": True})
 
