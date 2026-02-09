@@ -11,40 +11,40 @@ from ..models import MatchMember, PaymentInfo, User
 
 
 START_TEXT = (
-    "⚽ WebFut\n\n"
-    "Мини-приложение для игр с друзьями.\n\n"
-    "• создание игры\n"
-    "• автоматическое деление на команды\n"
-    "• ведение и завершение матча\n"
-    "• оплата поля\n"
-    "• фидбек и статистика игроков\n\n"
-    "Всё — внутри приложения 👇"
+    "WEBFUT v2.0 - новый интерфейс, уведомления и AI-модель\n\n"
+    "Матчи с друзьями в одном мини-приложении.\n\n"
+    "• создать матч\n"
+    "• поделить на команды\n"
+    "• вести матч в лайве\n"
+    "• закрыть оплату поля\n"
+    "• оставить фидбек и смотреть статистику\n\n"
+    "Запускай ниже 👇"
 )
 
 PAYMENT_ANNOUNCE_TEXT = (
     "💸 Оплата поля\n\n"
     "Плательщик: {payer_name}\n"
     "Сумма с человека: {amount} ₽\n\n"
-    "Переведи и отметь оплату"
+    "Реквизиты для перевода — в приложении"
 )
 
 PAYMENT_MARKED_TEXT = (
     "💸 Перевод отмечен\n\n"
-    "{user_name} отметил, что перевёл {amount} ₽\n\n"
-    "Проверь перевод и подтверди"
+    "{user_name} отметил перевод на {amount} ₽\n\n"
+    "Проверь поступление и подтверди оплату"
 )
 
 PAYMENT_REMINDER_TEXT = (
     "⏰ Напоминание об оплате\n\n"
     "Плательщик: {payer_name}\n"
     "Сумма: {amount} ₽\n\n"
-    "Если ещё не перевёл — скинь сейчас"
+    "Если еще не перевел — сделай перевод в приложении"
 )
 
 SQUADS_PROPOSED_TEXT = (
-    "⚽ Предложены составы команд\n\n"
-    "Организатор зафиксировал составы команд.\n"
-    "Вы можете посмотреть их в приложении."
+    "⚽ Составы предложены\n\n"
+    "Организатор предложил составы команд.\n"
+    "Проверь составы в приложении."
 )
 
 
@@ -151,7 +151,7 @@ def send_start(chat_id: int) -> None:
     send_message(
         chat_id,
         START_TEXT,
-        buttons=[{"text": "🚀 Открыть WebFut", "action": "open_app"}],
+        buttons=[{"text": "Открыть WebFut", "action": "open_app"}],
     )
 
 
@@ -174,8 +174,8 @@ def send_payment_announce(
         amount=_format_amount(per_person),
     )
     buttons = [
-        {"text": "💳 Скинуть", "action": "open_payment"},
-        {"text": "📱 Открыть игру", "action": "open_game"},
+        {"text": "Смотреть реквизиты", "action": "open_payment"},
+        {"text": "Открыть игру", "action": "open_game"},
     ]
     for member in members:
         send_message(member.tg_id, text, buttons=buttons, match_id=match_id)
@@ -199,9 +199,9 @@ def send_payment_marked_with_target(
         payer_tg_id,
         text,
         buttons=[
-            {"text": "✅ Подтвердить", "action": "confirm_payment"},
-            {"text": "❌ Не подтвердить", "action": "reject_payment"},
-            {"text": "📱 Открыть приложение", "action": "open_app"},
+            {"text": "Подтвердить", "action": "confirm_payment"},
+            {"text": "Отклонить", "action": "reject_payment"},
+            {"text": "Открыть приложение", "action": "open_app"},
         ],
         match_id=match_id,
         target_tg_id=target_tg_id,
@@ -224,7 +224,7 @@ def send_payment_reminder(
         send_message(
             member.tg_id,
             text,
-            buttons=[{"text": "💳 Скинуть", "action": "open_payment"}],
+            buttons=[{"text": "Смотреть реквизиты", "action": "open_payment"}],
             match_id=match_id,
         )
         sent += 1
@@ -238,7 +238,7 @@ def send_squads_proposed(match_id: int, members: list[MatchMember]) -> None:
         send_message(
             member.tg_id,
             SQUADS_PROPOSED_TEXT,
-            buttons=[{"text": "📱 Открыть игру", "action": "open_game"}],
+            buttons=[{"text": "Посмотреть составы на матч", "action": "open_game"}],
             match_id=match_id,
         )
 
