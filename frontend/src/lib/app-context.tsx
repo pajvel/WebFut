@@ -4,7 +4,7 @@ import type { Me, Settings } from "./types";
 type AppContextValue = {
   me: Me | null;
   settings: Settings | null;
-  setTheme: (theme: "light" | "dark") => void;
+  setTheme: (theme: string) => void;
   refreshMe: () => void;
 };
 
@@ -18,6 +18,5 @@ export const AppContext = createContext<AppContextValue>({
 export function useAppContext() {
   return useContext(AppContext);
 }
-
 
 

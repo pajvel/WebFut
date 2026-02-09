@@ -7,6 +7,7 @@ import { cn } from "../lib/utils";
 import { getMatch } from "../lib/api";
 import type { MatchSummary } from "../lib/types";
 import { formatVenueLabel } from "../lib/venue";
+import { formatDateShortMsk, formatTimeMsk } from "../lib/datetime";
 
 type TopBarProps = {
   title?: string;
@@ -109,15 +110,8 @@ export function TopBar({ title, avatarUrl }: TopBarProps) {
         : "bg-zinc-400";
 
   const matchDateSource = matchMeta?.scheduled_at || matchMeta?.created_at || null;
-  const matchDate = matchDateSource ? new Date(matchDateSource) : null;
-  const hasValidMatchDate = Boolean(matchDate && !Number.isNaN(matchDate.getTime()));
-
-  const dateLabel = hasValidMatchDate
-    ? matchDate!.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" })
-    : "--.--";
-  const timeLabel = hasValidMatchDate
-    ? matchDate!.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-    : "--:--";
+  const dateLabel = formatDateShortMsk(matchDateSource) || "--.--";
+  const timeLabel = formatTimeMsk(matchDateSource) || "--:--";
   const venueLabel = formatVenueLabel(matchMeta?.venue);
 
   return (

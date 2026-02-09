@@ -191,7 +191,7 @@ def _ensure_context(session) -> Context:
 def _ensure_users(session) -> None:
     for name, tg_id in PLAYER_IDS.items():
         session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
-        session.add(UserSettings(tg_id=tg_id, theme="light", mode_18plus=False, avatar_grayscale=True))
+        session.add(UserSettings(tg_id=tg_id, theme="real", mode_18plus=False, avatar_grayscale=True))
 
 
 def _make_team_match(venue: str, team_a: list[str], team_b: list[str], segments: list[dict]) -> TeamMatch:

@@ -55,6 +55,8 @@ import { StatusCard } from "../components/StatusCard";
 import { formatApiError } from "../lib/errors";
 import { TgUser, ManualUser, TgUsersResponse } from "../lib/types";
 import { resolveMediaUrl } from "../lib/media";
+import { PROFILE_THEMES } from "../lib/profile-theme";
+import { formatDateShortMsk, formatDateTimeMsk } from "../lib/datetime";
 
 type StatePlayer = {
   player_id: string;
@@ -76,6 +78,20 @@ const roleOptions = [
 const getRoleLabel = (role: string) => {
   const option = roleOptions.find(r => r.value === role);
   return option?.label || role;
+};
+
+const THEME_NAME_BY_ID = Object.fromEntries(PROFILE_THEMES.map((theme) => [theme.id, theme.name]));
+
+const normalizeThemeId = (raw: string | null | undefined) => {
+  const value = String(raw || "real");
+  if (value === "light") return "real";
+  if (value === "dark") return "juve";
+  return value;
+};
+
+const getThemeLabel = (raw: string | null | undefined) => {
+  const id = normalizeThemeId(raw);
+  return THEME_NAME_BY_ID[id] || id.toUpperCase();
 };
 
 type AdminTab =
@@ -876,7 +892,7 @@ export function Admin() {
   };
   const matrixSortIcon = (playerId: string, axis: "row" | "col") => {
     if (matrixSort.playerId !== playerId || matrixSort.axis !== axis || matrixSort.dir === "none") return "";
-    return matrixSort.dir === "desc" ? " ↓" : " ↑";
+    return matrixSort.dir === "desc" ? " v" : " ^";
   };
   const saveTeamNames = async () => {
     if (!selectedMatchId || !matchDetail) return;
@@ -1027,7 +1043,7 @@ export function Admin() {
         }`}
       >
         {label}
-        {isActive ? <span className="text-[8px] font-black">{sortDir === "desc" ? "↑" : "↓"}</span> : null}
+        {isActive ? <span className="text-[8px] font-black">{sortDir === "desc" ? "^" : "v"}</span> : null}
       </button>
     );
   };
@@ -1113,7 +1129,7 @@ export function Admin() {
                     </td>
                     <td className="p-4 border-b border-[var(--border-main)] text-center">
                       <span className="inline-flex items-center rounded-md border border-[var(--border-main)]/50 px-2 py-0.5 text-[10px] font-black uppercase">
-                        {(user?.theme || "light") === "dark" ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                        {getThemeLabel(user?.theme)}
                       </span>
                     </td>
                     <td className="p-4 border-b border-[var(--border-main)] text-center">
@@ -1202,7 +1218,7 @@ export function Admin() {
                         {displayName(player.player_id)}
                       </h3>
                       <div className="mt-1 text-[9px] font-black uppercase opacity-60">
-                        ТЕМА: {(user?.theme || "light") === "dark" ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                        ТЕМА: {getThemeLabel(user?.theme)}
                       </div>
                       <div className="mt-2">
                         {attack === 0 && defense === 0 ? (
@@ -1298,7 +1314,7 @@ export function Admin() {
                           {filteredMatches.map((m) => (
                             <tr key={m.id} className="border-t border-[var(--border-main)]/30">
                               <td className="p-3 border-b border-[var(--border-main)]/30 text-[10px] opacity-60">#{m.id}</td>
-                              <td className="p-3 border-b border-[var(--border-main)]/30 text-xs uppercase italic">{m.created_at ? new Date(m.created_at).toLocaleDateString("ru-RU") : "—"}
+                              <td className="p-3 border-b border-[var(--border-main)]/30 text-xs uppercase italic">{m.created_at ? formatDateShortMsk(m.created_at) : "—"}
                               </td>
                               <td className="p-3 border-b border-[var(--border-main)]/30 text-center">
                                 <span className={`px-2 py-1 text-[9px] font-black uppercase ${matchStatusClass(m.status)}`}>{matchStatusLabel(m.status)}
@@ -1349,7 +1365,7 @@ export function Admin() {
                             <div>
                               <span className="block font-mono text-[10px] opacity-60 uppercase">#{m.id}</span>
                               <span className="block text-[11px] font-black uppercase mt-0.5 italic">
-                                {m.created_at ? new Date(m.created_at).toLocaleDateString("ru-RU") : "—"}
+                                {m.created_at ? formatDateShortMsk(m.created_at) : "—"}
                               </span>
                             </div>
                             <span
@@ -1431,8 +1447,8 @@ export function Admin() {
                           <div className="text-2xl font-black italic uppercase leading-none">{matchMeta.venue || "—"}</div>
                           <div className="text-xs font-mono opacity-60 mt-2">
                             {matchMeta.scheduled_at
-                              ? new Date(matchMeta.scheduled_at).toLocaleString("ru-RU")
-                              : new Date(matchMeta.created_at).toLocaleString("ru-RU")}
+                              ? formatDateTimeMsk(matchMeta.scheduled_at)
+                              : formatDateTimeMsk(matchMeta.created_at)}
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
@@ -2241,7 +2257,7 @@ export function Admin() {
                         <div className="mb-1 flex items-center justify-between">
                           <div className="text-xl font-black uppercase italic tracking-tighter">Матч #{log.match_id}</div>
                           <div className="text-[10px] font-mono opacity-60">
-                            {new Date(log.created_at).toLocaleString("ru-RU")}
+                            {formatDateTimeMsk(log.created_at)}
                           </div>
                         </div>
                         <div className="mb-2 text-[11px] text-[var(--text-main)]/70 uppercase italic">
@@ -2253,11 +2269,12 @@ export function Admin() {
                               log.delta >= 0 ? "text-green-500" : "text-red-500"
                             }`}
                           >
-                            Δ {log.delta.toFixed(2)}
+                            {log.delta >= 0 ? "+" : ""}
+                            {log.delta.toFixed(2)}
                           </span>
                           <span className="text-[var(--text-main)]/40 text-lg font-black">|</span>
                           <span className="text-lg font-mono tracking-tighter text-[var(--text-main)]/80">
-                            {log.pre_global.toFixed(2)} <span className="text-[var(--text-main)]/40">→</span>{" "}
+                            {log.pre_global.toFixed(2)} <span className="text-[var(--text-main)]/40">{" > "}</span>
                             {log.post_global.toFixed(2)}
                           </span>
                         </div>
@@ -2458,8 +2475,8 @@ export function Admin() {
 
                 <div className="flex-1 overflow-auto space-y-2 pb-20">
                   {themeLogItems.map((user) => {
-                    const themeRaw = String(user.theme || "light");
-                    const isDark = themeRaw === "dark";
+                    const themeId = normalizeThemeId(user.theme);
+                    const themeName = getThemeLabel(user.theme);
                     return (
                       <div
                         key={`theme-${user.tg_id}`}
@@ -2473,16 +2490,10 @@ export function Admin() {
                             <div className="text-[10px] font-mono opacity-60">TG_ID: {user.tg_id}</div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span
-                              className={`px-2 py-1 text-[10px] font-black uppercase border ${
-                                isDark
-                                  ? "bg-[var(--bg-contrast)] text-[var(--text-contrast)] border-[var(--border-main)]"
-                                  : "bg-[var(--bg-page)] text-[var(--text-main)] border-[var(--border-main)]/60"
-                              }`}
-                            >
-                              {isDark ? "ТЁМНАЯ" : "СВЕТЛАЯ"}
+                            <span className="px-2 py-1 text-[10px] font-black uppercase border bg-[var(--bg-contrast)] text-[var(--text-contrast)] border-[var(--border-main)]">
+                              {themeName}
                             </span>
-                            <span className="text-[9px] opacity-50 font-mono uppercase">{themeRaw}</span>
+                            <span className="text-[9px] opacity-50 font-mono uppercase">{themeId}</span>
                           </div>
                         </div>
                       </div>
@@ -2553,13 +2564,13 @@ export function Admin() {
                             <div className="flex items-baseline gap-2">
                               <span className="text-[9px] opacity-50 font-black">ATTACKER</span>
                               <span className="text-sm font-mono tracking-tighter">
-                                {log.old_attacker.toFixed(2)} → {log.new_attacker.toFixed(2)}
+                                {log.old_attacker.toFixed(2)} {" > "} {log.new_attacker.toFixed(2)}
                               </span>
                             </div>
                             <div className="flex items-baseline gap-2">
                               <span className="text-[9px] opacity-50 font-black">DEFENDER</span>
                               <span className="text-sm font-mono tracking-tighter">
-                                {log.old_defender.toFixed(2)} → {log.new_defender.toFixed(2)}
+                                {log.old_defender.toFixed(2)} {" > "} {log.new_defender.toFixed(2)}
                               </span>
                             </div>
                           </div>
@@ -2751,17 +2762,17 @@ export function Admin() {
                           <div className="text-[12px] font-black uppercase italic flex items-center gap-2">
                             <span>{displayName(log.player_a)}</span>
                             <span className="text-[8px] opacity-60 font-black">
-                              {matrixKind === "synergy" ? "↔" : "vs"}
+                              {matrixKind === "synergy" ? "-" : "vs"}
                             </span>
                             <span className="text-[var(--text-accent)]">{displayName(log.player_b)}</span>
                           </div>
                           <div className="text-[8px] opacity-60 font-mono">
-                            {new Date(log.created_at).toLocaleString("ru-RU")}
+                            {formatDateTimeMsk(log.created_at)}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="opacity-60 font-mono text-[10px]">{log.value_before.toFixed(2)}</span>
-                          <span className="text-[var(--text-accent)] text-[10px]">→</span>
+                          <span className="text-[var(--text-accent)] text-[10px]">{" > "}</span>
                           <span
                             className={`font-mono text-[11px] font-bold ${
                               log.value_after >= log.value_before ? "text-green-500" : "text-red-500"
@@ -3150,7 +3161,7 @@ export function Admin() {
                       <div className="flex items-center justify-between">
                         <span className="font-black">Матч #{log.match_id}</span>
                         <span className="text-xs text-[var(--text-main)]/60">
-                          {new Date(log.created_at).toLocaleString("ru-RU")}
+                          {formatDateTimeMsk(log.created_at)}
                         </span>
                       </div>
                       <div className="text-xs text-[var(--text-main)]/60">
@@ -3520,7 +3531,7 @@ export function Admin() {
                               {displayName(log.player_a)} {" > "} {displayName(log.player_b)}
                             </span>
                             <span className="text-[var(--text-main)]/60">
-                              {new Date(log.created_at).toLocaleString("ru-RU")}
+                              {formatDateTimeMsk(log.created_at)}
                             </span>
                           </div>
                           <div className="text-[var(--text-main)]/60">
@@ -3564,7 +3575,7 @@ export function Admin() {
                 onClick={() => setRolesOpen(false)}
                 className="h-10 w-10 border-2 border-[var(--border-main)] text-[var(--text-main)] font-black"
               >
-                ✕
+                ?
               </button>
             </div>
             <div className="max-h-[65vh] overflow-auto rounded-xl border border-[var(--border-main)]/60">
@@ -3627,6 +3638,7 @@ export function Admin() {
     </div>
   );
 }
+
 
 
 

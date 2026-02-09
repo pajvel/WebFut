@@ -136,10 +136,13 @@ def patch_settings():
     db = get_db()
     settings = db.query(UserSettings).filter_by(tg_id=user.tg_id).one()
     theme = data.get("theme")
-    if theme not in (None, "light", "dark"):
-        return err("invalid_theme", 400)
-    if theme:
-        settings.theme = theme
+    if "theme" in data:
+        if theme in (None, ""):
+            settings.theme = "real"
+        elif not isinstance(theme, str):
+            return err("invalid_theme", 400)
+        else:
+            settings.theme = theme.strip() or "real"
     if "mode_18plus" in data:
         settings.mode_18plus = bool(data["mode_18plus"])
     if "avatar_grayscale" in data:

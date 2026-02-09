@@ -9,6 +9,7 @@ import { MatchCard } from "../components/MatchCard";
 import { StatusCard } from "../components/StatusCard";
 import { formatApiError } from "../lib/errors";
 import { useMatText } from "../lib/mode18";
+import { nowMskParts, toMskIsoString } from "../lib/datetime";
 
 const venueOptions = [
   { value: "зал1", label: "Эксперт" },
@@ -26,14 +27,10 @@ export function MatchesFeed() {
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [venue, setVenue] = useState(venueOptions[0].value);
   const [scheduledDate, setScheduledDate] = useState(() => {
-    const now = new Date();
-    return now.toISOString().slice(0, 10);
+    return nowMskParts().date;
   });
   const [scheduledTime, setScheduledTime] = useState(() => {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
+    return nowMskParts().time;
   });
 
   useEffect(() => {
@@ -88,11 +85,9 @@ export function MatchesFeed() {
   useEffect(() => {
     if (!sheetOpen) return;
     if (scheduledDate && scheduledTime) return;
-    const now = new Date();
-    setScheduledDate(now.toISOString().slice(0, 10));
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    setScheduledTime(`${hh}:${mm}`);
+    const now = nowMskParts();
+    setScheduledDate(now.date);
+    setScheduledTime(now.time);
   }, [sheetOpen, scheduledDate, scheduledTime]);
 
   const activeMatches = useMemo(
@@ -113,10 +108,10 @@ export function MatchesFeed() {
     try {
       const nextDate = scheduledDate.trim();
       const nextTime = scheduledTime.trim() || "00:00";
-      const scheduledAt = nextDate ? new Date(`${nextDate}T${nextTime}`) : null;
+      const scheduledAt = nextDate ? toMskIsoString(nextDate, nextTime) : null;
       await createMatch({
         venue,
-        scheduled_at: scheduledAt ? scheduledAt.toISOString() : null
+        scheduled_at: scheduledAt
       });
       const data = await fetchMatches({ limit: 30, offset: 0 });
       setMatches(data?.matches || []);

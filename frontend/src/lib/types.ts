@@ -135,7 +135,7 @@ export type Me = {
 };
 
 export type Settings = {
-  theme: "light" | "dark" | null;
+  theme: string | null;
   mode_18plus: boolean;
   avatar_grayscale: boolean;
 };

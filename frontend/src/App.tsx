@@ -8,7 +8,7 @@ import { getMe, getSettings, patchSettings, ApiError, fetchMatches, getProfile, 
 import { AppContext } from "./lib/app-context";
 import type { Me, Settings } from "./lib/types";
 import { formatApiError } from "./lib/errors";
-import { applyProfileTheme } from "./lib/profile-theme";
+import { PROFILE_THEMES, applyProfileTheme } from "./lib/profile-theme";
 
 export default function App() {
   const MIN_BOOT_MS = 3000;
@@ -127,17 +127,33 @@ export default function App() {
 
   useEffect(() => {
     if (settings?.theme) {
-      document.documentElement.classList.toggle("dark", settings.theme === "dark");
+      const themeRaw = String(settings.theme);
+      const mappedTheme =
+        themeRaw === "light"
+          ? "real"
+          : themeRaw === "dark"
+            ? "juve"
+            : themeRaw;
+      const isKnownProfileTheme = PROFILE_THEMES.some((theme) => theme.id === mappedTheme);
+      if (isKnownProfileTheme) {
+        applyProfileTheme(mappedTheme);
+      }
+      document.documentElement.classList.toggle("dark", mappedTheme === "juve");
     }
     document.documentElement.classList.toggle("avatars-grayscale", settings?.avatar_grayscale !== false);
   }, [settings?.theme, settings?.avatar_grayscale]);
 
-  const setTheme = useCallback((theme: "light" | "dark") => {
+  const setTheme = useCallback((theme: string) => {
     patchSettings({ theme }).then(() => {
       setSettings((prev) =>
         prev ? { ...prev, theme } : { theme, mode_18plus: false, avatar_grayscale: true }
       );
-      document.documentElement.classList.toggle("dark", theme === "dark");
+      const mappedTheme = theme === "light" ? "real" : theme === "dark" ? "juve" : theme;
+      const isKnownProfileTheme = PROFILE_THEMES.some((item) => item.id === mappedTheme);
+      if (isKnownProfileTheme) {
+        applyProfileTheme(mappedTheme);
+      }
+      document.documentElement.classList.toggle("dark", mappedTheme === "juve");
     });
   }, []);
 

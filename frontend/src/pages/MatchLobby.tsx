@@ -16,22 +16,17 @@ import { formatApiError } from "../lib/errors";
 import type { MatchDetail, MatchMember } from "../lib/types";
 import { StatusCard } from "../components/StatusCard";
 import { resolveMediaUrl } from "../lib/media";
+import { formatDateShortMsk, formatTimeMsk } from "../lib/datetime";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useMatText } from "../lib/mode18";
 import { formatVenueLabel } from "../lib/venue";
 
 function formatDate(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+  return formatDateShortMsk(value);
 }
 
 function formatTime(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return formatTimeMsk(value);
 }
 
 function getInitials(name: string) {

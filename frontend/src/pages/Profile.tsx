@@ -19,6 +19,7 @@ import { formatApiError } from "../lib/errors";
 import { resolveMediaUrl } from "../lib/media";
 import { formatVenueLabel } from "../lib/venue";
 import { PROFILE_THEMES, applyProfileTheme } from "../lib/profile-theme";
+import { formatDateShortMsk } from "../lib/datetime";
 
 const emptyStats: ProfileStats = {
   matches: 0,
@@ -46,10 +47,7 @@ export type ProfileMatch = {
 };
 
 function formatShortDate(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+  return formatDateShortMsk(value);
 }
 
 function getInitials(value: string) {
@@ -179,6 +177,16 @@ export function Profile() {
   }, [profileThemeId]);
 
   useEffect(() => {
+    const incomingTheme = settings?.theme || "";
+    if (!incomingTheme) return;
+    const exists = PROFILE_THEMES.some((theme) => theme.id === incomingTheme);
+    if (!exists) return;
+    if (incomingTheme !== profileThemeId) {
+      setProfileThemeId(incomingTheme);
+    }
+  }, [settings?.theme, profileThemeId]);
+
+  useEffect(() => {
     if (editOpen) {
       setDraftName(me?.custom_name || me?.tg_name || "");
       setDraftFile(null);
@@ -218,8 +226,14 @@ export function Profile() {
       if ((nextName && nextName !== (me?.custom_name || me?.tg_name)) || (!nextName && hasCustomName)) {
         await patchMe({ custom_name: nextName || null });
       }
-      if (avatarGrayscale !== (settings?.avatar_grayscale !== false)) {
-        await patchSettings({ avatar_grayscale: avatarGrayscale });
+      const nextThemeId = profileThemeId;
+      const hasThemeChange = nextThemeId !== (settings?.theme || "");
+      const hasGrayscaleChange = avatarGrayscale !== (settings?.avatar_grayscale !== false);
+      if (hasThemeChange || hasGrayscaleChange) {
+        await patchSettings({
+          avatar_grayscale: avatarGrayscale,
+          theme: nextThemeId
+        });
       }
       if (resetToTelegramAvatar) {
         await patchMe({ custom_avatar: null });

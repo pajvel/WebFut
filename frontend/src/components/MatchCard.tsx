@@ -2,6 +2,7 @@
 
 import type { MatchParticipant, MatchSummary } from "../lib/types";
 import { resolveMediaUrl } from "../lib/media";
+import { formatDateShortMsk, formatTimeMsk } from "../lib/datetime";
 import { useAppContext } from "../lib/app-context";
 import { formatVenueLabel } from "../lib/venue";
 
@@ -22,17 +23,11 @@ function mapAvatars(members: MatchParticipant[]) {
 }
 
 function formatDate(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+  return formatDateShortMsk(value);
 }
 
 function formatTime(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return formatTimeMsk(value);
 }
 
 function AvatarStack({ members, align }: { members: { name: string; avatar: string | null }[]; align: "left" | "right" }) {
