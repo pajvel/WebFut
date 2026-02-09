@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+﻿from datetime import datetime, timedelta, timezone
 import copy
 
 from flask import Blueprint, request
@@ -34,6 +34,7 @@ from team_model.team_model.teamgen import evaluate_split, generate_teams
 bp = Blueprint("matches", __name__, url_prefix="/matches")
 
 _VENUE_MAP = {"зал1": "Эксперт", "зал2": "Маракана"}
+_MSK_TZ = timezone(timedelta(hours=3))
 
 
 def _display_venue(venue: str | None) -> str | None:
@@ -47,6 +48,14 @@ def _normalize_venue(venue: str | None) -> str | None:
         return venue
     reverse = {v: k for k, v in _VENUE_MAP.items()}
     return reverse.get(venue, venue)
+
+
+def _parse_scheduled_at_msk(raw_value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        # Store wall-clock Moscow time without timezone in DB.
+        return parsed.astimezone(_MSK_TZ).replace(tzinfo=None)
+    return parsed
 
 
 def _require_member(db, match_id: int, tg_id: int) -> MatchMember | None:
@@ -227,7 +236,7 @@ def create_match():
     if data.get("scheduled_at"):
         raw_scheduled = data["scheduled_at"]
         try:
-            scheduled_at = datetime.fromisoformat(raw_scheduled.replace("Z", "+00:00"))
+            scheduled_at = _parse_scheduled_at_msk(raw_scheduled)
         except ValueError:
             return err("invalid_scheduled_at", 400)
     match = Match(
@@ -750,3 +759,6 @@ def get_match(match_id: int):
             "me": {"tg_id": user.tg_id, "is_admin": is_admin(user)},
         }
     )
+
+
+
