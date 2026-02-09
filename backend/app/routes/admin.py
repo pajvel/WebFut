@@ -424,6 +424,8 @@ def list_users():
         return err("forbidden", 403)
     db = get_db()
     users = db.query(User).order_by(User.tg_name.asc()).all()
+    settings = db.query(UserSettings).all()
+    theme_by_tg = {int(s.tg_id): (s.theme or "light") for s in settings}
     return ok(
         {
             "users": [
@@ -433,6 +435,7 @@ def list_users():
                     "tg_avatar": u.tg_avatar,
                     "custom_name": u.custom_name,
                     "custom_avatar": u.custom_avatar,
+                    "theme": theme_by_tg.get(int(u.tg_id), "light"),
                 }
                 for u in users
             ]

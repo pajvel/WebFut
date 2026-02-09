@@ -205,6 +205,7 @@ export type AdminUser = {
   tg_avatar: string | null;
   custom_name: string | null;
   custom_avatar: string | null;
+  theme?: "light" | "dark" | string | null;
 };
 
 export type TgUser = {
