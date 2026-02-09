@@ -603,8 +603,16 @@ def bind_state_player():
             target_tg=target_tg,
         )
     except ValueError as exc:
+        db.rollback()
         return err(str(exc), 400)
-    db.commit()
+    except IntegrityError:
+        db.rollback()
+        return err("bind_conflict", 400)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return err("bind_conflict", 400)
     return ok()
 
 
@@ -838,8 +846,16 @@ def link_profiles():
             target_tg=target_tg,
         )
     except ValueError as exc:
+        db.rollback()
         return err(str(exc), 400)
-    db.commit()
+    except IntegrityError:
+        db.rollback()
+        return err("bind_conflict", 400)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return err("bind_conflict", 400)
 
     return ok({"merged": True})
 
