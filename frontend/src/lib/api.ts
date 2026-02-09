@@ -34,7 +34,10 @@ function buildUrl(path: string) {
 function getAuthHeaders() {
   const headers: Record<string, string> = {};
   const token = localStorage.getItem("auth_token");
-  const initData = localStorage.getItem("tg_init_data");
+  const initDataFromStorage = localStorage.getItem("tg_init_data");
+  const initDataFromTelegram =
+    (window as unknown as { Telegram?: { WebApp?: { initData?: string } } })?.Telegram?.WebApp?.initData || "";
+  const initData = initDataFromStorage || initDataFromTelegram;
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
