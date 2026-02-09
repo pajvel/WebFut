@@ -328,6 +328,52 @@ def _drop_player_from_state(state: TeamModelState, player_id: str) -> None:
         state.interactions.domination[venue] = filtered
 
 
+def _bind_profile_to_tg(db, *, context_id: int, source_tg: int, target_tg: int) -> dict:
+    if source_tg == target_tg:
+        return {"merged": False, "same": True}
+    if target_tg <= 0:
+        raise ValueError("invalid_target_tg_id")
+
+    source_id = str(source_tg)
+    target_id = str(target_tg)
+
+    target_user = db.query(User).filter_by(tg_id=target_tg).one_or_none()
+    if target_user is None:
+        target_user = User(tg_id=target_tg, tg_name=f"User {target_tg}", tg_avatar=None)
+        db.add(target_user)
+        if db.query(UserSettings).filter_by(tg_id=target_tg).one_or_none() is None:
+            db.add(UserSettings(tg_id=target_tg))
+        db.flush()
+
+    state = load_state(db, context_id)
+    _rebind_player(state, source_id, target_id)
+    _rebind_members(db, source_tg, target_tg)
+    _rebind_feedback(db, source_tg, target_tg, source_id, target_id)
+    _rebind_payments(db, source_tg, target_tg)
+    _rebind_events(db, source_tg, target_tg)
+    _rebind_match_owner(db, source_tg, target_tg)
+    _rebind_team_json(db, source_id, target_id)
+    _rebind_rating_logs(db, source_id, target_id)
+    _rebind_interaction_logs(db, source_id, target_id)
+    _drop_player_from_state(state, source_id)
+    if target_id not in state.players:
+        base = state.base_ratings.get(source_id, TeamConfig().global_start_rating)
+        state.ensure_player(target_id, "Р­РєСЃРїРµСЂС‚", float(base), False)
+        state.base_ratings[target_id] = float(base)
+
+    source_user = db.query(User).filter_by(tg_id=source_tg).one_or_none()
+    if source_user is not None and source_user.tg_id != target_tg:
+        if source_user.custom_name:
+            target_user.custom_name = source_user.custom_name
+        if source_user.custom_avatar:
+            target_user.custom_avatar = source_user.custom_avatar
+        db.query(UserSettings).filter_by(tg_id=source_tg).delete()
+        db.delete(source_user)
+
+    save_state(db, context_id, state)
+    return {"merged": True, "source_tg": source_tg, "target_tg": target_tg}
+
+
 def _log_match_deltas(db, match: Match, state: TeamModelState) -> None:
     team_match = build_team_model_match(db, match.id)
     venue = team_match.venue
