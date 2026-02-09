@@ -81,6 +81,10 @@ html.avatars-grayscale img {
   filter: grayscale(1);
 }
 
+html:not(.avatars-grayscale) img {
+  filter: none !important;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
