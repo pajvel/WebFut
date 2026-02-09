@@ -895,7 +895,7 @@ function AvatarStack({ members, align }: { members: { name: string; avatar: stri
 
 function LeaderboardView({ items, meTgId }: { items: LeaderboardEntry[]; meTgId: number | null }) {
   const top = items.slice(0, 3);
-  const rest = items.slice(3);
+  const tableItems = items;
   const myIndex = meTgId ? items.findIndex((entry) => entry.tg_id === meTgId) : -1;
   const myRank = myIndex >= 0 ? myIndex + 1 : null;
   const myEntry = myIndex >= 0 ? items[myIndex] : null;
@@ -968,7 +968,7 @@ function LeaderboardView({ items, meTgId }: { items: LeaderboardEntry[]; meTgId:
         </div>
 
         <div className="flex flex-col rounded-2xl overflow-hidden border-2 border-[color:var(--border-main)] bg-[color:var(--bg-surface)]/50">
-          {rest.map((entry, index) => (
+          {tableItems.map((entry, index) => (
             <div
               key={`leaderboard-row-${entry.tg_id ?? index}`}
               className="flex items-center py-4 px-5 border-b-2 border-[color:var(--border-main)] last:border-0 hover:bg-[color:var(--bg-contrast)]/5 active:bg-[color:var(--bg-contrast)]/10 transition-all group"
@@ -977,7 +977,7 @@ function LeaderboardView({ items, meTgId }: { items: LeaderboardEntry[]; meTgId:
                 className="w-10 font-black text-xl italic transition-colors opacity-60 group-hover:opacity-100"
                 style={{ color: "var(--text-main)" }}
               >
-                {index + 4}
+                {index + 1}
               </span>
               <div className="flex-1 flex items-center gap-4">
                 <div
@@ -997,10 +997,16 @@ function LeaderboardView({ items, meTgId }: { items: LeaderboardEntry[]; meTgId:
                 </div>
                 <div className="flex flex-col leading-none">
                   <span className="font-black text-[color:var(--text-main)] text-sm uppercase tracking-tight italic mb-1">{entry.name}</span>
-                  <div className="flex gap-1">
-                    <div className="h-1 w-8 bg-[var(--bg-surface)] rounded-lg overflow-hidden border border-[color:var(--border-main)]/20">
-                      <div className="h-full bg-[var(--bg-contrast)]" style={{ width: "60%" }} />
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded-md border border-[color:var(--border-main)]/50 px-1.5 py-[2px] text-[8px] font-black uppercase tracking-widest opacity-80">
+                      И {entry.games}
+                    </span>
+                    <span className="rounded-md border border-[color:var(--border-main)]/50 px-1.5 py-[2px] text-[8px] font-black uppercase tracking-widest opacity-80">
+                      В {entry.wins}
+                    </span>
+                    <span className="rounded-md border border-[color:var(--border-main)]/50 px-1.5 py-[2px] text-[8px] font-black uppercase tracking-widest opacity-80">
+                      П {entry.losses}
+                    </span>
                   </div>
                 </div>
               </div>
