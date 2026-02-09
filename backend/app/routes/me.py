@@ -261,20 +261,25 @@ def _build_profile(tg_id: int):
     finished_matches = [m for m in history if m["status"] == "finished"]
     finished_ids = {m["id"] for m in finished_matches}
 
-    # Use latest rating log per finished match to avoid stale/rolled-back event edits.
-    rating_rows = (
-        db.query(RatingLog)
-        .filter(RatingLog.player_id == str(tg_id), RatingLog.match_id.in_(finished_ids))
-        .order_by(RatingLog.created_at.desc())
+    # Profile stats must reflect actual final match events, not rating logs.
+    finished_events = (
+        db.query(Event)
+        .filter(
+            Event.match_id.in_(finished_ids),
+            Event.is_deleted.is_(False),
+        )
         .all()
     )
-    latest_by_match: dict[int, RatingLog] = {}
-    for row in rating_rows:
-        if row.match_id not in latest_by_match:
-            latest_by_match[row.match_id] = row
-    goals = int(sum((row.goals or 0) for row in latest_by_match.values()))
-    assists = int(sum((row.assists or 0) for row in latest_by_match.values()))
-    mvp = db.query(Feedback).filter(Feedback.mvp_vote_tg_id == tg_id).count()
+    goals = 0
+    assists = 0
+    for event in finished_events:
+        if event.event_type == "goal" and int(event.scorer_tg_id or 0) == int(tg_id):
+            goals += 1
+        if event.event_type == "goal" and int(event.assist_tg_id or 0) == int(tg_id):
+            assists += 1
+
+    # MVP in profile = matches where player actually became top MVP.
+    mvp = sum(1 for item in finished_matches if ((item.get("mvp") or {}).get("top_tg_id") == tg_id))
     player_key = str(tg_id)
     player_state = state.players.get(player_key) if hasattr(state, "players") else None
     last_rating = (
