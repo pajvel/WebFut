@@ -2,6 +2,7 @@
 from datetime import datetime
 import hashlib
 import json
+from typing import Iterable
 
 from ..auth import is_admin, require_user
 from ..db import get_db
@@ -139,6 +140,74 @@ def _teams_hash(teams_json: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _normalize_ids(ids: Iterable[str | int]) -> list[str]:
+    return [str(x) for x in ids]
+
+
+def _last_finished_split(db, match: Match) -> dict | None:
+    prev_match = (
+        db.query(Match)
+        .filter(
+            Match.context_id == match.context_id,
+            Match.id != match.id,
+            Match.status == "finished",
+        )
+        .order_by(Match.finished_at.desc(), Match.id.desc())
+        .first()
+    )
+    if prev_match is None:
+        return None
+
+    prev_current = db.query(TeamCurrent).filter_by(match_id=prev_match.id).one_or_none()
+    if prev_current and prev_current.current_teams_json:
+        return {
+            "A": _normalize_ids(prev_current.current_teams_json.get("A", [])),
+            "B": _normalize_ids(prev_current.current_teams_json.get("B", [])),
+        }
+
+    prev_variant = (
+        db.query(TeamVariant)
+        .filter_by(match_id=prev_match.id, is_recommended=True)
+        .order_by(TeamVariant.variant_no.asc())
+        .first()
+    )
+    if prev_variant and prev_variant.teams_json:
+        return {
+            "A": _normalize_ids(prev_variant.teams_json.get("A", [])),
+            "B": _normalize_ids(prev_variant.teams_json.get("B", [])),
+        }
+    return None
+
+
+def _repeat_overlap_penalty(team_a: list[str], team_b: list[str], prev_split: dict | None) -> float:
+    if not prev_split:
+        return 0.0
+    prev_a = set(_normalize_ids(prev_split.get("A", [])))
+    prev_b = set(_normalize_ids(prev_split.get("B", [])))
+    a = set(_normalize_ids(team_a))
+    b = set(_normalize_ids(team_b))
+
+    same_side = len(a & prev_a) + len(b & prev_b)
+    swapped_side = len(a & prev_b) + len(b & prev_a)
+    best_overlap = max(same_side, swapped_side)
+
+    team_size = max(1, len(team_a))
+    max_per_side = max(
+        len(a & prev_a),
+        len(a & prev_b),
+        len(b & prev_a),
+        len(b & prev_b),
+    )
+
+    penalty = 0.0
+    if max_per_side >= max(3, team_size - 1):
+        penalty += 1000.0
+    overlap_limit = max(2, 2 * team_size - 4)
+    if best_overlap > overlap_limit:
+        penalty += (best_overlap - overlap_limit) * 250.0
+    return penalty
+
+
 def _maybe_send_squads_proposed(db, match_id: int, teams_json: dict) -> None:
     current = (
         db.query(TeamCurrent)
@@ -210,7 +279,19 @@ def generate(match_id: int):
     for name in participants:
         state.ensure_player(name, match.venue, state.config.global_start_rating, False)
     save_state(db, match.context_id, state)
-    variants = generate_teams(state, participants, match.venue, top_n=3)
+    prev_split = _last_finished_split(db, match)
+    variants = generate_teams(state, participants, match.venue, top_n=12)
+    if prev_split:
+        for variant in variants:
+            base_score = float(variant.get("score", 0.0))
+            anti_repeat = _repeat_overlap_penalty(
+                [str(x) for x in variant["team_a"]],
+                [str(x) for x in variant["team_b"]],
+                prev_split,
+            )
+            variant["score"] = base_score + anti_repeat
+        variants.sort(key=lambda item: (item["score"], abs(item["d_hat"]), item["team_a"]))
+    variants = variants[:3]
     db.query(TeamVariant).filter_by(match_id=match_id).delete()
 
     base_eval = evaluate_split(state, variants[0]["team_a"], variants[0]["team_b"], match.venue)
