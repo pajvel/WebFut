@@ -181,10 +181,8 @@ export function Profile() {
     if (!incomingTheme) return;
     const exists = PROFILE_THEMES.some((theme) => theme.id === incomingTheme);
     if (!exists) return;
-    if (incomingTheme !== profileThemeId) {
-      setProfileThemeId(incomingTheme);
-    }
-  }, [settings?.theme, profileThemeId]);
+    setProfileThemeId(incomingTheme);
+  }, [settings?.theme]);
 
   useEffect(() => {
     if (editOpen) {
