@@ -315,8 +315,7 @@ export function FinishedMatch() {
       if (timeDiff !== 0) return timeDiff;
       return a.id - b.id;
     });
-    let runningA = 0;
-    let runningB = 0;
+    const segmentRunning = new Map<number, { a: number; b: number }>();
 
     const formatSegmentLabel = (segNo: number, isButtGame: boolean) =>
       isButtGame ? `СЕГМЕНТ ${segNo} • НА ЖОПУ` : `СЕГМЕНТ ${segNo}`;
@@ -331,20 +330,24 @@ export function FinishedMatch() {
       const assist = event.assist_tg_id ? playerById.get(event.assist_tg_id)?.name || "" : undefined;
       const isOwn = event.event_type === "own_goal";
       const team = event.team;
+
+      const segId = event.segment_id ?? -1;
+      const current = segmentRunning.get(segId) || { a: 0, b: 0 };
       if (isOwn) {
-        if (team === "A") runningB += 1;
-        if (team === "B") runningA += 1;
+        if (team === "A") current.b += 1;
+        if (team === "B") current.a += 1;
       } else {
-        if (team === "A") runningA += 1;
-        if (team === "B") runningB += 1;
+        if (team === "A") current.a += 1;
+        if (team === "B") current.b += 1;
       }
+      segmentRunning.set(segId, current);
       return {
         id: String(event.id),
         type: event.event_type,
         player: scorer || "UNKNOWN",
         assist: assist || undefined,
         team,
-        scoreAfter: `${runningA} : ${runningB}`,
+        scoreAfter: `${current.a} : ${current.b}`,
         time: toTime(event.created_at),
         period: segmentLabel.get(event.segment_id) || "СЕГМЕНТ"
       };
@@ -374,9 +377,9 @@ export function FinishedMatch() {
         payerName:(payerInfo?.payer_tg_id
             ? data.members.find((member) => member.tg_id === payerInfo.payer_tg_id)?.name
             : null) || "НЕ ВЫБРАН",
-        fio: payerInfo?.payer_fio || "вЂ”",
-        phone: payerInfo?.payer_phone || "вЂ”",
-        bank: payerInfo?.payer_bank || "вЂ”",
+        fio: payerInfo?.payer_fio || "—",
+        phone: payerInfo?.payer_phone || "—",
+        bank: payerInfo?.payer_bank || "—",
         amount: payerInfo?.payer_amount ?? null,
         perPerson: (() => {
           const amount = payerInfo?.payer_amount;
@@ -720,7 +723,7 @@ const ResultTab = ({
     return `+${digits}`;
   };
   const formatMoney = (value: number | null) => {
-    if (value == null || Number.isNaN(value)) return "вЂ”";
+    if (value == null || Number.isNaN(value)) return "—";
     return new Intl.NumberFormat("ru-RU", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
@@ -1896,6 +1899,9 @@ const PayerSelectOverlay = ({
     </div>
   );
 };
+
+
+
 
 
 

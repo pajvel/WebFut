@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 
 import { getMatch, submitFeedback } from "../lib/api";
 import type { MatchDetail, MatchMember } from "../lib/types";
-import { useAppContext } from "../lib/app-context";
 import { formatApiError } from "../lib/errors";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -13,7 +12,6 @@ import { useMatText } from "../lib/mode18";
 
 export function Feedback() {
   const { matchId } = useParams();
-  const { settings } = useAppContext();
   const t = useMatText();
   const [data, setData] = useState<MatchDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +31,7 @@ export function Feedback() {
     return data?.members.filter((m) => m.role !== "spectator") || [];
   }, [data]);
 
-  const mode18 = settings?.mode_18plus;
+  const mode18 = false;
 
   const handleSubmit = async () => {
     if (!matchId) return;
