@@ -64,41 +64,33 @@ export default function App() {
         if (err instanceof ApiError && err.status === 401) {
           setAuthError(formatApiError(err));
           unauthorized = true;
-          return;
         }
       }
 
-      setBootStep(24, "Loading Profile");
-      await getMe()
-        .then((data) => {
-          if (!cancelled) setMe(data);
-        })
-        .catch((err) => {
-          if (err instanceof ApiError && err.status === 401) {
-            setAuthError(formatApiError(err));
-            unauthorized = true;
-          }
-        });
+      if (cancelled || unauthorized) return;
+
+      setBootStep(24, "Loading Profile & Data");
+
+      const bootPromises = [
+        getMe().then(data => { if (!cancelled) setMe(data); }),
+        getSettings().then(data => { if (!cancelled) setSettings(data); }),
+        fetchMatches().catch(() => undefined),
+        getProfile().catch(() => undefined),
+        getLeaderboard().catch(() => undefined)
+      ];
+
+      try {
+        await Promise.all(bootPromises);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          setAuthError(formatApiError(err));
+          unauthorized = true;
+        }
+      }
 
       if (cancelled || unauthorized) return;
 
-      setBootStep(38, "Loading Theme");
-      await getSettings()
-        .then((data) => {
-          if (!cancelled) setSettings(data);
-        })
-        .catch(() => undefined);
-
-      setBootStep(58, "Loading Matches");
-      await fetchMatches().catch(() => undefined);
-
-      setBootStep(76, "Loading Rating");
-      await getProfile().catch(() => undefined);
-
-      setBootStep(92, "Loading Leaderboard");
-      await getLeaderboard().catch(() => undefined);
-
-      if (cancelled) return;
+      setBootStep(92, "Finalizing");
       const elapsed = Date.now() - bootStartedAt;
       if (elapsed >= MIN_BOOT_MS) {
         finishBootNow();
@@ -125,37 +117,36 @@ export default function App() {
     applyProfileTheme(storedThemeId);
   }, []);
 
+  // Централизованная логика применения темы
+  const mapAndApplyTheme = useCallback((themeRaw: string) => {
+    const mappedTheme =
+      themeRaw === "light"
+        ? "real"
+        : themeRaw === "dark"
+          ? "juve"
+          : themeRaw;
+    const isKnownProfileTheme = PROFILE_THEMES.some((t) => t.id === mappedTheme);
+    if (isKnownProfileTheme) {
+      applyProfileTheme(mappedTheme);
+    }
+    document.documentElement.classList.toggle("dark", mappedTheme === "juve");
+  }, []);
+
   useEffect(() => {
     if (settings?.theme) {
-      const themeRaw = String(settings.theme);
-      const mappedTheme =
-        themeRaw === "light"
-          ? "real"
-          : themeRaw === "dark"
-            ? "juve"
-            : themeRaw;
-      const isKnownProfileTheme = PROFILE_THEMES.some((theme) => theme.id === mappedTheme);
-      if (isKnownProfileTheme) {
-        applyProfileTheme(mappedTheme);
-      }
-      document.documentElement.classList.toggle("dark", mappedTheme === "juve");
+      mapAndApplyTheme(String(settings.theme));
     }
     document.documentElement.classList.toggle("avatars-grayscale", settings?.avatar_grayscale !== false);
-  }, [settings?.theme, settings?.avatar_grayscale]);
+  }, [settings?.theme, settings?.avatar_grayscale, mapAndApplyTheme]);
 
   const setTheme = useCallback((theme: string) => {
     patchSettings({ theme }).then(() => {
       setSettings((prev) =>
-        prev ? { ...prev, theme } : { theme, mode_18plus: false, avatar_grayscale: true }
+        prev ? { ...prev, theme } : prev
       );
-      const mappedTheme = theme === "light" ? "real" : theme === "dark" ? "juve" : theme;
-      const isKnownProfileTheme = PROFILE_THEMES.some((item) => item.id === mappedTheme);
-      if (isKnownProfileTheme) {
-        applyProfileTheme(mappedTheme);
-      }
-      document.documentElement.classList.toggle("dark", mappedTheme === "juve");
+      mapAndApplyTheme(theme);
     });
-  }, []);
+  }, [mapAndApplyTheme]);
 
   const contextValue = useMemo(
     () => ({ me, settings, setTheme, refreshMe }),

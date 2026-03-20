@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import { Navigate, RouterProvider, createHashRouter } from "react-router-dom";
 
@@ -12,6 +12,9 @@ import { Feedback } from "./pages/Feedback";
 import { Profile } from "./pages/Profile";
 import { PlayerProfile } from "./pages/PlayerProfile";
 import { Admin } from "./pages/Admin";
+import { LobbySelector } from "./pages/LobbySelector";
+import { LobbySettings } from "./pages/LobbySettings";
+import { DraftScreen } from "./pages/DraftScreen";
 import "./styles/globals.css";
 
 const futureFlags = {
@@ -33,8 +36,11 @@ const router = createHashRouter(
         { path: "matches/:matchId/teams", element: <TeamVariants /> },
         { path: "matches/:matchId/live", element: <LiveMatch /> },
         { path: "matches/:matchId/feedback", element: <Feedback /> },
+        { path: "matches/:matchId/draft", element: <DraftScreen /> },
         { path: "profile", element: <Profile /> },
         { path: "players/:tgId", element: <PlayerProfile /> },
+        { path: "lobbies", element: <LobbySelector /> },
+        { path: "lobbies/:contextId/settings", element: <LobbySettings /> },
         { path: "admin", element: <Admin /> },
         { path: "*", element: <Navigate to="/matches" replace /> }
       ]

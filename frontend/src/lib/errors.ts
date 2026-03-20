@@ -17,7 +17,7 @@ export function formatApiError(error: unknown) {
         return "initData без user. Перезапусти WebApp.";
       }
       if (code === "auth_date_expired") {
-        return "Сессия Telegram истекла (более 24 часов). Перезапусти WebApp.";
+        return "Сессия Telegram истекла (более 7 дней). Перезапусти WebApp.";
       }
       return "Сессия истекла. Перезапусти WebApp.";
     }

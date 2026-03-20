@@ -577,6 +577,7 @@ export async function adminAddMatchMembers(matchId: number, members: Array<{
   });
 }
 
+
 export async function adminRemoveMatchMember(matchId: number, tg_id: number) {
   return apiFetch(`/admin/matches/${matchId}/members/${tg_id}`, { method: "DELETE" });
 }
@@ -590,4 +591,89 @@ export async function adminPatchSegment(
     method: "PATCH",
     body: JSON.stringify(payload)
   });
+}
+
+// ── Lobby (SaaS) API ────────────────────────────────────────────────────
+
+export async function fetchLobbies() {
+  return apiFetch<{ lobbies: import("./types").Lobby[]; default_context_id: number | null }>("/lobbies");
+}
+
+export async function setDefaultLobby(contextId: number | null) {
+  return apiFetch("/lobbies/set-default", {
+    method: "POST",
+    body: JSON.stringify({ context_id: contextId })
+  });
+}
+
+export async function joinLobby(contextId: number) {
+  return apiFetch<{ role: string; already_member: boolean }>(`/lobbies/${contextId}/join`, { method: "POST" });
+}
+
+export async function leaveLobby(contextId: number) {
+  return apiFetch(`/lobbies/${contextId}/leave`, { method: "POST" });
+}
+
+export async function getLobbySettings(contextId: number) {
+  return apiFetch<{
+    context: { id: number; title: string } | null;
+    config: import("./types").LobbyConfig;
+    venues: import("./types").LobbyVenue[];
+    members: import("./types").LobbyMember[];
+  }>(`/lobbies/${contextId}/settings`);
+}
+
+export async function patchLobbySettings(contextId: number, payload: Partial<import("./types").LobbyConfig> & { title?: string }) {
+  return apiFetch(`/lobbies/${contextId}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createVenue(contextId: number, payload: { name: string; address?: string }) {
+  return apiFetch<{ id: number }>(`/lobbies/${contextId}/venues`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteVenue(contextId: number, venueId: number) {
+  return apiFetch(`/lobbies/${contextId}/venues/${venueId}`, { method: "DELETE" });
+}
+
+// ── Draft API ───────────────────────────────────────────────────────────
+
+export async function initDraft(matchId: number) {
+  return apiFetch<{
+    draft_id: number;
+    status: string;
+    captain_suggestions: import("./types").DraftCaptainSuggestion[];
+    participants: import("./types").DraftParticipant[];
+  }>(`/matches/${matchId}/draft/init`, { method: "POST" });
+}
+
+export async function setDraftCaptains(matchId: number, captainA: number, captainB: number) {
+  return apiFetch<import("./types").DraftState>(`/matches/${matchId}/draft/captains`, {
+    method: "POST",
+    body: JSON.stringify({ captain_a_tg_id: captainA, captain_b_tg_id: captainB })
+  });
+}
+
+export async function draftPick(matchId: number, pickedTgId: number) {
+  return apiFetch<import("./types").DraftState>(`/matches/${matchId}/draft/pick`, {
+    method: "POST",
+    body: JSON.stringify({ picked_tg_id: pickedTgId })
+  });
+}
+
+export async function draftUndo(matchId: number) {
+  return apiFetch<import("./types").DraftState>(`/matches/${matchId}/draft/undo`, { method: "POST" });
+}
+
+export async function getDraftStatus(matchId: number) {
+  return apiFetch<import("./types").DraftState>(`/matches/${matchId}/draft`);
+}
+
+export async function cancelDraft(matchId: number) {
+  return apiFetch(`/matches/${matchId}/draft/cancel`, { method: "POST" });
 }

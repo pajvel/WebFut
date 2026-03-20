@@ -1,4 +1,4 @@
-﻿export type MatchSummary = {
+export type MatchSummary = {
   id: number;
   context_id: number;
   created_by: number;
@@ -215,6 +215,8 @@ export type TgUser = {
   custom_name?: string;
 };
 
+
+
 export type ManualUser = {
   id: string;
   custom_name: string;
@@ -225,3 +227,73 @@ export type TgUsersResponse = {
   manual_users: ManualUser[];
 };
 
+// ── Lobby (SaaS) types ──────────────────────────────────────────────────
+
+export type LobbyConfig = {
+  payments_enabled: boolean;
+  leaderboard_enabled: boolean;
+  butt_game_allowed: boolean;
+  max_team_size: number;
+};
+
+export type Lobby = {
+  id: number;
+  title: string;
+  role: string;
+  is_default: boolean;
+  member_count: number;
+  config: LobbyConfig | null;
+};
+
+export type LobbyMember = {
+  tg_id: number;
+  role: string;
+  name: string;
+  avatar: string | null;
+  joined_at: string;
+};
+
+export type LobbyVenue = {
+  id: number;
+  name: string;
+  address: string | null;
+};
+
+// ── Draft types ─────────────────────────────────────────────────────────
+
+export type DraftParticipant = {
+  tg_id: number;
+  name?: string;
+  avatar?: string | null;
+  rating?: number;
+};
+
+export type DraftCaptainSuggestion = {
+  captain_a: DraftParticipant;
+  captain_b: DraftParticipant;
+  diff: number;
+};
+
+export type DraftPick = {
+  pick_number: number;
+  captain_tg_id: number;
+  picked_tg_id: number;
+  auto_assigned_tg_id: number | null;
+  assigned_team: "A" | "B";
+  auto_assigned_team: "A" | "B" | null;
+};
+
+export type DraftState = {
+  draft_id: number;
+  match_id?: number;
+  status: "captain_selection" | "picking" | "completed" | "cancelled";
+  captain_a: DraftParticipant | null;
+  captain_b: DraftParticipant | null;
+  current_pick_number: number;
+  current_captain_tg_id: number | null;
+  suggested_pair: number[] | null;
+  snake_order: string[] | null;
+  teams: { A: string[]; B: string[] };
+  pool: DraftParticipant[];
+  picks: DraftPick[];
+};
