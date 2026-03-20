@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -10,7 +10,9 @@ import {
   payerRespond,
   payerSelect,
   spectateMatch,
-  updateMemberPermissions
+  updateMemberPermissions,
+  initDraft,
+  getDraftStatus
 } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import type { MatchDetail, MatchMember } from "../lib/types";
@@ -127,12 +129,17 @@ export function MatchLobby() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [showPayerModal, setShowPayerModal] = useState(false);
   const [permissionTarget, setPermissionTarget] = useState<MatchMember | null>(null);
+  const [draftActive, setDraftActive] = useState(false);
 
   const load = () => {
     if (!matchId) return;
     getMatch(Number(matchId))
       .then(setData)
       .catch((err) => setError(formatApiError(err)));
+    
+    getDraftStatus(Number(matchId))
+      .then(st => setDraftActive(st.status !== 'not_found'))
+      .catch(() => setDraftActive(false));
   };
 
   useEffect(() => {
@@ -162,6 +169,12 @@ export function MatchLobby() {
           }
         })
         .catch((err) => setError(formatApiError(err)));
+
+      getDraftStatus(Number(matchId))
+        .then(st => {
+           if (alive) setDraftActive(st.status !== 'not_found' && st.status !== 'cancelled' && st.status !== 'completed');
+        })
+        .catch(() => alive && setDraftActive(false));
     };
     tick();
     const interval = window.setInterval(tick, 2000);
@@ -169,11 +182,7 @@ export function MatchLobby() {
       alive = false;
       window.clearInterval(interval);
     };
-  }, [matchId]);
-
-  useEffect(() => {
-    if (!data) return;
-  }, [data]);
+  }, [matchId, navigate]);
 
   const myRole = useMemo(() => {
     if (!data) return null;
@@ -245,10 +254,19 @@ export function MatchLobby() {
     if (!matchId) return;
     try {
       await generateTeams(Number(matchId));
+      navigate(`/matches/${matchId}/teams?generated=1`);
     } catch (err) {
       setError(formatApiError(err));
-    } finally {
-      navigate(`/matches/${matchId}/teams?generated=1`);
+    }
+  };
+
+  const handleStartDraft = async () => {
+    if (!matchId) return;
+    try {
+      await initDraft(Number(matchId));
+      navigate(`/matches/${matchId}/draft`);
+    } catch (err) {
+      setError(formatApiError(err));
     }
   };
 
@@ -513,19 +531,48 @@ export function MatchLobby() {
       </div>
 
       {isOrganizer ? (
+        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-[var(--bg-page)] border-t-2 border-[var(--border-main)] z-40 space-y-3">
+          {draftActive ? (
+            <button
+              onClick={() => navigate(`/matches/${data.match.id}/draft`)}
+              className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-4 font-black italic uppercase text-lg shadow-[6px_6px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
+            >
+              ПРОДОЛЖИТЬ ДРАФТ
+            </button>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleCreateTeams}
+                className="bg-[var(--bg-page)] text-[var(--text-main)] py-4 font-black italic uppercase text-xs shadow-[4px_4px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
+              >
+                АВТО-БАЛАНС
+              </button>
+              <button
+                onClick={handleStartDraft}
+                className="bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-4 font-black italic uppercase text-xs shadow-[4px_4px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
+              >
+                ДРАФТ КАПИТАНОВ
+              </button>
+            </div>
+          )}
+          
+          {data.match.status === "generating" && !draftActive ? (
+             <button
+               onClick={() => navigate(`/matches/${data.match.id}/teams?generated=1`)}
+               className="w-full bg-[var(--bg-page)] text-[var(--text-main)] py-3 font-black italic uppercase text-[10px] border-2 border-[var(--border-main)] active:scale-95 transition-all opacity-60"
+             >
+               ПОСМОТРЕТЬ ТЕКУЩИЕ КОМАНДЫ
+             </button>
+          ) : null}
+        </div>
+      ) : draftActive ? (
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-[var(--bg-page)] border-t-2 border-[var(--border-main)] z-40">
-          <button
-            onClick={() => {
-              if (data.match.status === "generating") {
-                navigate(`/matches/${data.match.id}/teams?generated=1`);
-              } else {
-                handleCreateTeams();
-              }
-            }}
-            className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-4 font-black italic uppercase text-lg shadow-[6px_6px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
-          >
-            {data.match.status === "generating" ? "ПРОДОЛЖИТЬ" : "СОЗДАТЬ КОМАНДЫ"}
-          </button>
+           <button
+              onClick={() => navigate(`/matches/${data.match.id}/draft`)}
+              className="w-full bg-[var(--bg-contrast)] text-[var(--text-contrast)] py-4 font-black italic uppercase text-lg shadow-[6px_6px_0px_0px_var(--border-main)] border-2 border-[var(--border-main)] active:shadow-none transition-all"
+            >
+              ИДЕТ ДРАФТ КАПИТАНОВ
+            </button>
         </div>
       ) : null}
 
@@ -758,4 +805,3 @@ export function MatchLobby() {
     </>
   );
 }
-

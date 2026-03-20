@@ -1,7 +1,6 @@
-﻿
 import { useEffect, useMemo, useState } from "react";
-
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { createMatch, fetchMatches } from "../lib/api";
 import type { MatchSummary } from "../lib/types";
 import { Sheet, SheetClose, SheetContent } from "../components/ui/sheet";
@@ -17,6 +16,7 @@ const venueOptions = [
 ];
 
 export function MatchesFeed() {
+  const navigate = useNavigate();
   const t = useMatText();
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,14 +136,24 @@ export function MatchesFeed() {
               </h3>
               <div className="flex-1 h-[2px] bg-[color:var(--border-main)]/10"></div>
             </div>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="w-10 h-10 bg-[var(--bg-contrast)] text-[color:var(--text-contrast)] border-2 border-[var(--border-main)] rounded-lg flex items-center justify-center transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-              style={{ boxShadow: "4px 4px 0px 0px var(--border-main)" }}
-              aria-label={t("Создать матч")}
-            >
-              <Plus className="h-5 w-5" strokeWidth={3} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/lobbies")}
+                className="w-10 h-10 bg-[var(--bg-surface)] text-[color:var(--text-main)] border-2 border-[var(--border-main)] rounded-lg flex items-center justify-center transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                style={{ boxShadow: "4px 4px 0px 0px var(--border-main)" }}
+                title={t("Лобби")}
+              >
+                <LayoutGrid className="h-5 w-5" strokeWidth={3} />
+              </button>
+              <button
+                onClick={() => setSheetOpen(true)}
+                className="w-10 h-10 bg-[var(--bg-contrast)] text-[color:var(--text-contrast)] border-2 border-[var(--border-main)] rounded-lg flex items-center justify-center transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                style={{ boxShadow: "4px 4px 0px 0px var(--border-main)" }}
+                aria-label={t("Создать матч")}
+              >
+                <Plus className="h-5 w-5" strokeWidth={3} />
+              </button>
+            </div>
           </div>
 
           {error ? <StatusCard title={t("Ошибка")} message={error} onClose={() => setError(null)} /> : null}
