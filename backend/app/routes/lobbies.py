@@ -78,6 +78,33 @@ def list_lobbies():
     return ok({"lobbies": items, "default_context_id": user.default_context_id})
 
 
+@bp.post("/lobbies")
+def create_lobby():
+    """Create a new lobby. Only global admins can create new top-level lobbies."""
+    user = require_user()
+    if not is_admin(user):
+        return err("forbidden", 403)
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return err("missing_title", 400)
+    db = get_db()
+    context = Context(title=title)
+    db.add(context)
+    db.flush()  # to get context.id
+    config = ContextConfig(context_id=context.id)
+    db.add(config)
+    # creator is the super_admin of this lobby
+    member = ContextMember(
+        context_id=context.id,
+        tg_id=user.tg_id,
+        role=LobbyRole.SUPER_ADMIN.value,
+    )
+    db.add(member)
+    db.commit()
+    return ok({"id": context.id})
+
+
 @bp.post("/lobbies/set-default")
 def set_default_lobby():
     """Set user's default lobby (auto-enter on next launch)."""
@@ -145,6 +172,36 @@ def leave_lobby(context_id: int):
 
 
 # ── lobby settings (admin only) ─────────────────────────────────────────
+
+@bp.post("/lobbies/<int:context_id>/members")
+def add_lobby_member(context_id: int):
+    """Add a user to the lobby manually. Admin-only."""
+    user = require_user()
+    db = get_db()
+    if not is_admin(user):
+        member = _require_lobby_role(db, context_id, user.tg_id, LobbyRole.ADMIN)
+        if member is None:
+            return err("forbidden", 403)
+    data = request.get_json(silent=True) or {}
+    target_tg_id = data.get("tg_id")
+    if not target_tg_id:
+        return err("missing_tg_id", 400)
+    target_user = db.query(User).filter_by(tg_id=target_tg_id).one_or_none()
+    if not target_user:
+        return err("user_not_found", 404)
+    # check if already a member
+    existing = db.query(ContextMember).filter_by(context_id=context_id, tg_id=target_tg_id).one_or_none()
+    if existing:
+        return err("already_member", 400)
+    member = ContextMember(
+        context_id=context_id,
+        tg_id=target_tg_id,
+        role=data.get("role", LobbyRole.PLAYER.value)
+    )
+    db.add(member)
+    db.commit()
+    return ok()
+
 
 @bp.get("/lobbies/<int:context_id>/settings")
 def get_lobby_settings(context_id: int):

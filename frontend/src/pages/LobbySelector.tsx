@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, ChevronRight, Crown, Star, Users } from "lucide-react";
+import { Building2, ChevronRight, Crown, Star, Users, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { fetchLobbies, setDefaultLobby } from "../lib/api";
+import { fetchLobbies, setDefaultLobby, createLobby } from "../lib/api";
 import { useAppContext } from "../lib/app-context";
 import type { Lobby } from "../lib/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Суперадмин",
@@ -26,6 +27,9 @@ export function LobbySelector() {
   const navigate = useNavigate();
   const [lobbies, setLobbies] = useState<Lobby[]>([]);
   const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -53,6 +57,23 @@ export function LobbySelector() {
     }
   };
 
+  const handleCreate = async () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setCreating(true);
+    try {
+      const data = await createLobby({ title });
+      setCreateOpen(false);
+      setNewTitle("");
+      load();
+      if (data?.id) navigate(`/lobbies/${data.id}/settings`);
+    } catch {
+      /* ignore */
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -67,14 +88,25 @@ export function LobbySelector() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
+        className="mb-6 flex items-start justify-between"
       >
-        <h1 className="text-2xl font-black tracking-tight text-white">
-          Мои лобби
-        </h1>
-        <p className="mt-1 text-sm text-gray-400">
-          Переключайся между игровыми площадками
-        </p>
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-white">
+            Мои лобби
+          </h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Переключайся между площадками
+          </p>
+        </div>
+        {me?.is_admin && (
+           <motion.button
+             whileTap={{ scale: 0.95 }}
+             onClick={() => setCreateOpen(true)}
+             className="flex h-10 w-10 items-center justify-center rounded-xl bg-webfut-pink text-white shadow-lg"
+           >
+             <Plus className="h-6 w-6" />
+           </motion.button>
+        )}
       </motion.div>
 
       {/* Lobby Cards */}
@@ -184,6 +216,36 @@ export function LobbySelector() {
           </p>
         </motion.div>
       )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="bg-[#111] border-[#333] text-white">
+          <DialogHeader>
+            <DialogTitle>Создать новое лобби</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Название</label>
+              <input
+                type="text"
+                autoFocus
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Напр. Московская лига"
+                className="w-full rounded-xl bg-black px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-webfut-pink"
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              />
+            </div>
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newTitle.trim()}
+              className="w-full rounded-xl bg-webfut-pink py-3 font-bold text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
+            >
+              {creating ? "Создание..." : "Создать лобби"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

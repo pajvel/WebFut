@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,6 +10,8 @@ import {
   Users,
   Crown,
   Shield,
+  Search,
+  UserPlus,
 } from "lucide-react";
 
 import {
@@ -17,8 +19,12 @@ import {
   patchLobbySettings,
   createVenue,
   deleteVenue,
+  patchLobbyMember,
+  adminListUsers,
+  addLobbyMember,
 } from "../lib/api";
-import type { LobbyConfig, LobbyMember, LobbyVenue } from "../lib/types";
+import type { LobbyConfig, LobbyMember, LobbyVenue, AdminUser } from "../lib/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Суперадмин",
@@ -44,6 +50,13 @@ export function LobbySettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newVenueName, setNewVenueName] = useState("");
+  
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<LobbyMember | null>(null);
+  
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
+  const [userSearch, setUserSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +107,47 @@ export function LobbySettings() {
     } catch {
       /* ignore */
     }
+  };
+
+  const handleChangeRole = async (tgId: number, role: string) => {
+    try {
+      await patchLobbyMember(lobbyId, tgId, { role });
+      setMembers(prev => prev.map(m => m.tg_id === tgId ? { ...m, role } : m));
+      setRoleDialogOpen(false);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleOpenAddMember = async () => {
+    setAddMemberOpen(true);
+    try {
+      const data = await adminListUsers();
+      setAllUsers(data?.users ?? []);
+    } catch {
+       /* ignore */
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+     const s = userSearch.toLowerCase();
+     const memberIds = new Set(members.map(m => m.tg_id));
+     return allUsers.filter(u => {
+        if (memberIds.has(u.tg_id)) return false;
+        const nameMatch = (u.custom_name || u.tg_name || "").toLowerCase().includes(s);
+        const idMatch = String(u.tg_id).includes(s);
+        return nameMatch || idMatch;
+     }).slice(0, 10);
+  }, [allUsers, userSearch, members]);
+
+  const handleImportUser = async (tgId: number) => {
+     try {
+        await addLobbyMember(lobbyId, { tg_id: tgId });
+        load();
+        setAddMemberOpen(false);
+     } catch {
+        /* ignore */
+     }
   };
 
   if (loading) {
@@ -203,7 +257,7 @@ export function LobbySettings() {
         className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-webfut-pink bg-webfut-pink/20 py-3 text-sm font-bold text-webfut-pink transition-colors hover:bg-webfut-pink/30 disabled:opacity-50"
       >
         <Save className="h-4 w-4" />
-        {saving ? "Сохранение..." : "Сохранить"}
+        {saving ? "Сохранение..." : "Сохранить параметры"}
       </motion.button>
 
       {/* Venues */}
@@ -272,23 +326,35 @@ export function LobbySettings() {
         transition={{ delay: 0.2 }}
         className="rounded-2xl border-2 border-[#333] bg-[#111] p-4 space-y-3"
       >
-        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          <Users className="h-3.5 w-3.5" /> Участники ({members.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <Users className="h-3.5 w-3.5" /> Участники ({members.length})
+          </h2>
+          <button
+            onClick={handleOpenAddMember}
+            className="flex items-center gap-1 rounded-lg bg-webfut-pink/10 px-2 py-1 text-[10px] font-bold text-webfut-pink"
+          >
+             <Plus className="h-3 w-3" /> Добавить
+          </button>
+        </div>
 
         <div className="space-y-2 max-h-80 overflow-y-auto hide-scrollbar">
           {members.map((member) => {
             const Icon = ROLE_ICONS[member.role];
             return (
-              <div
+              <button
                 key={member.tg_id}
-                className="flex items-center gap-3 rounded-lg bg-black/30 px-3 py-2"
+                onClick={() => {
+                   setSelectedMember(member);
+                   setRoleDialogOpen(true);
+                }}
+                className="w-full flex items-center gap-3 rounded-xl bg-black/30 px-3 py-2 text-left transition-colors hover:bg-white/5 active:scale-[0.98]"
               >
                 {member.avatar ? (
                   <img
                     src={member.avatar}
                     alt=""
-                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    className="h-8 w-8 shrink-0 rounded-full object-cover border border-white/10"
                   />
                 ) : (
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-gray-400">
@@ -299,16 +365,89 @@ export function LobbySettings() {
                   <div className="truncate text-sm font-medium text-white">
                     {member.name}
                   </div>
-                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                    {Icon && <Icon className="h-3 w-3" />}
+                  <div className="flex items-center gap-1 text-[10px] text-gray-500 uppercase font-black tracking-widest">
+                    {Icon && <Icon className="h-2.5 w-2.5 text-webfut-pink" />}
                     {ROLE_LABELS[member.role] ?? member.role}
                   </div>
                 </div>
-              </div>
+                <div className="text-[10px] text-gray-600 font-bold uppercase">Роль</div>
+              </button>
             );
           })}
         </div>
       </motion.section>
+
+      {/* Role Management Dialog */}
+      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+         <DialogContent className="bg-[#111] border-[#333] text-white">
+            <DialogHeader>
+               <DialogTitle>Управление ролью</DialogTitle>
+            </DialogHeader>
+            {selectedMember && (
+               <div className="py-4 space-y-4">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-black/50">
+                     <span className="font-bold text-white uppercase tracking-tight">{selectedMember.name}</span>
+                     <span className="text-xs text-gray-500">TG ID: {selectedMember.tg_id}</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                     {Object.entries(ROLE_LABELS).map(([val, label]) => (
+                        <button
+                          key={val}
+                          onClick={() => handleChangeRole(selectedMember.tg_id, val)}
+                          className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all active:scale-[0.98] ${
+                             selectedMember.role === val ? 'bg-webfut-pink/20 border-webfut-pink text-white' : 'bg-black border-white/5 text-gray-400'
+                          }`}
+                        >
+                           <span className="text-sm font-black uppercase tracking-widest">{label}</span>
+                           {selectedMember.role === val && <div className="h-2 w-2 rounded-full bg-webfut-pink" />}
+                        </button>
+                     ))}
+                  </div>
+               </div>
+            )}
+         </DialogContent>
+      </Dialog>
+
+      {/* Add Member Dialog */}
+      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+         <DialogContent className="bg-[#111] border-[#333] text-white">
+            <DialogHeader>
+               <DialogTitle>Добавить участника</DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-4">
+               <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-500" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Поиск по имени или ID..."
+                    className="w-full rounded-xl bg-black px-10 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-webfut-pink"
+                  />
+               </div>
+               
+               <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {filteredUsers.length === 0 ? (
+                     <div className="py-8 text-center text-sm text-gray-500 italic">Пользователи не найдены</div>
+                  ) : (
+                     filteredUsers.map(user => (
+                        <button
+                          key={user.tg_id}
+                          onClick={() => handleImportUser(user.tg_id)}
+                          className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                        >
+                           <div className="text-left">
+                              <div className="text-sm font-bold text-white uppercase">{user.custom_name || user.tg_name}</div>
+                              <div className="text-[10px] text-gray-500">ID: {user.tg_id}</div>
+                           </div>
+                           <UserPlus className="h-4 w-4 text-webfut-pink" />
+                        </button>
+                     ))
+                  )}
+               </div>
+            </div>
+         </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -327,10 +466,10 @@ function ToggleRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex items-center justify-between gap-3 px-2">
       <div>
         <span className="text-sm font-medium text-white">{label}</span>
-        <span className="ml-2 text-xs text-gray-500">{description}</span>
+        <p className="text-[10px] text-gray-600 leading-none mt-1">{description}</p>
       </div>
       <button
         onClick={() => onChange(!checked)}

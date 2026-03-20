@@ -599,6 +599,13 @@ export async function fetchLobbies() {
   return apiFetch<{ lobbies: import("./types").Lobby[]; default_context_id: number | null }>("/lobbies");
 }
 
+export function createLobby(payload: { title: string }) {
+  return apiFetch<{ id: number }>("/lobbies", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function setDefaultLobby(contextId: number | null) {
   return apiFetch("/lobbies/set-default", {
     method: "POST",
@@ -639,6 +646,20 @@ export async function createVenue(contextId: number, payload: { name: string; ad
 
 export async function deleteVenue(contextId: number, venueId: number) {
   return apiFetch(`/lobbies/${contextId}/venues/${venueId}`, { method: "DELETE" });
+}
+
+export async function addLobbyMember(contextId: number, payload: { tg_id: number; role?: string }) {
+  return apiFetch(`/lobbies/${contextId}/members`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function patchLobbyMember(contextId: number, tgId: number, payload: { role: string }) {
+  return apiFetch(`/lobbies/${contextId}/members/${tgId}/role`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
 }
 
 // ── Draft API ───────────────────────────────────────────────────────────
