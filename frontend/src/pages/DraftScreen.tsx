@@ -35,7 +35,7 @@ export function DraftScreen() {
   const mid = Number(matchId);
 
   const [phase, setPhase] = useState<
-    "loading" | "captain_selection" | "picking" | "completed" | "error"
+    "loading" | "captain_selection" | "picking" | "completed" | "cancelled" | "error"
   >("loading");
   const [captainSuggestions, setCaptainSuggestions] = useState<
     DraftCaptainSuggestion[]
