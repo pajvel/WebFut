@@ -23,23 +23,29 @@ def create_app() -> Flask:
         allow_headers=["Content-Type", "Authorization", "X-Telegram-InitData"],
     )
 
-    # Настройка логов для продакшена (экономия RAM)
-    if Config.SQLALCHEMY_ECHO:
-        # Только в разработке
+    # Настройка логов: уровень зависит от FLASK_ENV, а не от SQLALCHEMY_ECHO
+    import os
+    is_dev = os.getenv("FLASK_ENV", "production") == "development"
+
+    if is_dev:
+        # В разработке — подробные логи
         logging.basicConfig(level=logging.DEBUG)
     else:
-        # В проде - только предупреждения и ошибки
+        # В проде — только предупреждения и ошибки
         logging.basicConfig(
             level=logging.WARNING,
             format='%(asctime)s %(levelname)s %(name)s: %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        
+
         # Отключаем лишние логгеры
         logging.getLogger('urllib3').setLevel(logging.WARNING)
-        logging.getLogger('sqlalchemy').setLevel(logging.WARNING)
 
-    from .routes import admin, auth, events, feedback, matches, me, payments, teams, telegram_bot
+    # SQLAlchemy логирование управляется отдельно через SQLALCHEMY_ECHO
+    sa_level = logging.DEBUG if Config.SQLALCHEMY_ECHO else logging.WARNING
+    logging.getLogger('sqlalchemy').setLevel(sa_level)
+
+    from .routes import admin, auth, draft, events, feedback, lobbies, matches, me, payments, teams, telegram_bot
 
     api_prefix = "/api"
     app.register_blueprint(auth.bp, url_prefix=f"{api_prefix}/auth")
@@ -50,6 +56,8 @@ def create_app() -> Flask:
     app.register_blueprint(payments.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
     app.register_blueprint(feedback.bp, url_prefix=f"{api_prefix}/matches/<int:match_id>")
     app.register_blueprint(admin.bp, url_prefix=f"{api_prefix}/admin")
+    app.register_blueprint(lobbies.bp, url_prefix=api_prefix)
+    app.register_blueprint(draft.bp, url_prefix=api_prefix)
     app.register_blueprint(telegram_bot.bp, url_prefix=api_prefix)
 
     @app.get("/api/health")

@@ -144,8 +144,11 @@ def submit_feedback(match_id: int):
         record.mvp_vote_tg_id = mvp_vote
     db.commit()
 
-    _ = load_state(db, match.context_id)
+    saved_state = load_state(db, match.context_id)
     state = TeamModelState.empty(TeamConfig())
+    # Preserve custom base ratings and tier bonuses set via admin
+    state.base_ratings = dict(getattr(saved_state, "base_ratings", {}) or {})
+    state.tier_bonus = dict(getattr(saved_state, "tier_bonus", {}) or {})
     matches = (
         db.query(Match)
         .filter_by(context_id=match.context_id, status="finished")
@@ -194,7 +197,11 @@ def submit_feedback(match_id: int):
 
     # Keep only effective interaction impact of the currently saved feedback by this user.
     state_without_author = TeamModelState.empty(TeamConfig())
+    state_without_author.base_ratings = dict(getattr(saved_state, "base_ratings", {}) or {})
+    state_without_author.tier_bonus = dict(getattr(saved_state, "tier_bonus", {}) or {})
     state_with_author = TeamModelState.empty(TeamConfig())
+    state_with_author.base_ratings = dict(getattr(saved_state, "base_ratings", {}) or {})
+    state_with_author.tier_bonus = dict(getattr(saved_state, "tier_bonus", {}) or {})
     for finished in matches:
         team_match = build_team_model_match(db, finished.id)
         quick_with, expanded_with = build_feedback(db, finished.id)

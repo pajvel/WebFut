@@ -1,14 +1,13 @@
 import os
 
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
-workers = 1
-timeout = 60
-
-# Оптимизация для 1GB RAM
-worker_class = "sync"
-worker_connections = 10
-max_requests = 100
-max_requests_jitter = 10
+# Оптимизация для 1GB RAM и конкурентности
+workers = 4
+worker_class = "gthread"
+threads = 2
+worker_connections = 1000
+max_requests = 1000
+max_requests_jitter = 50
 keepalive = 2
 preload_app = True
 

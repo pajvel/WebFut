@@ -53,9 +53,10 @@ def _normalize_venue(venue: str | None) -> str | None:
 def _parse_scheduled_at_msk(raw_value: str) -> datetime:
     parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
     if parsed.tzinfo is not None:
-        # Store wall-clock Moscow time without timezone in DB.
-        return parsed.astimezone(_MSK_TZ).replace(tzinfo=None)
-    return parsed
+        # Convert to Moscow time but keep timezone info for correct display
+        return parsed.astimezone(_MSK_TZ)
+    # Assume naive input is already Moscow time, attach timezone
+    return parsed.replace(tzinfo=_MSK_TZ)
 
 
 def _require_member(db, match_id: int, tg_id: int) -> MatchMember | None:

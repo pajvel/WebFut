@@ -51,8 +51,8 @@ def role_balance_penalty(roles: dict[str, dict[str, float]], team_a: list[str], 
     def sum_role(players: list[str], role: str) -> float:
         return sum(roles.get(p, {}).get(role, 0.0) for p in players)
 
-    attack_a = sum_role(team_a, "attack")
-    attack_b = sum_role(team_b, "attack")
-    defense_a = sum_role(team_a, "defense")
-    defense_b = sum_role(team_b, "defense")
+    attack_a = sum_role(team_a, "attacker")
+    attack_b = sum_role(team_b, "attacker")
+    defense_a = sum_role(team_a, "defender")
+    defense_b = sum_role(team_b, "defender")
     return (abs(attack_a - attack_b) + abs(defense_a - defense_b)) * cfg.teamgen_role_weight

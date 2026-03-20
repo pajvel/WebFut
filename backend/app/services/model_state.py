@@ -1,6 +1,5 @@
 import pickle
-from datetime import datetime
-import pickle
+from datetime import datetime, timezone
 
 from team_model.team_model import Config as TeamConfig
 from team_model.team_model import ModelState as TeamModelState
@@ -12,7 +11,7 @@ def load_state(db, context_id: int) -> TeamModelState:
     record = db.query(ModelState).filter_by(context_id=context_id).one_or_none()
     if record is None:
         state = TeamModelState.empty(TeamConfig())
-        record = ModelState(context_id=context_id, state_blob=pickle.dumps(state), updated_at=datetime.utcnow())
+        record = ModelState(context_id=context_id, state_blob=pickle.dumps(state), updated_at=datetime.now(timezone.utc))
         db.add(record)
         db.commit()
         return state
@@ -28,5 +27,5 @@ def load_state(db, context_id: int) -> TeamModelState:
 def save_state(db, context_id: int, state: TeamModelState) -> None:
     record = db.query(ModelState).filter_by(context_id=context_id).one()
     record.state_blob = pickle.dumps(state)
-    record.updated_at = datetime.utcnow()
+    record.updated_at = datetime.now(timezone.utc)
     db.commit()

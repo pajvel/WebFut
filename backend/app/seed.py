@@ -10,6 +10,9 @@ from .db import SessionLocal, engine
 from .models import (
     Base,
     Context,
+    ContextConfig,
+    ContextMember,
+    LobbyRole,
     Match,
     MatchMember,
     ModelState as ModelStateRecord,
@@ -17,6 +20,7 @@ from .models import (
     TeamVariant,
     User,
     UserSettings,
+    Venue,
 )
 from team_model.team_model import Config as TeamConfig
 from team_model.team_model import Match as TeamMatch
@@ -156,10 +160,19 @@ def ensure_schema() -> None:
         conn.execute(
             text("UPDATE user_settings SET avatar_grayscale = TRUE WHERE avatar_grayscale IS NULL")
         )
+        # --- SaaS multi-tenant migrations ---
+        conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_context_id INTEGER REFERENCES contexts(id)")
+        )
+        conn.execute(
+            text("ALTER TABLE matches ADD COLUMN IF NOT EXISTS venue_id INTEGER REFERENCES venues(id)")
+        )
 
 
 def _reset_db() -> None:
     tables = [
+        "draft_picks",
+        "draft_sessions",
         "feedback",
         "payment_status",
         "payment_requests",
@@ -170,9 +183,14 @@ def _reset_db() -> None:
         "team_variants",
         "match_members",
         "matches",
+        "venues",
+        "context_members",
+        "context_configs",
         "user_settings",
         "users",
         "model_states",
+        "interaction_logs",
+        "rating_logs",
         "contexts",
     ]
     with engine.begin() as conn:
@@ -185,6 +203,9 @@ def _ensure_context(session) -> Context:
         title=Config.DEFAULT_CONTEXT_TITLE,
     )
     session.add(context)
+    session.flush()
+    # Create default config for the lobby
+    session.add(ContextConfig(context_id=context.id))
     return context
 
 
@@ -192,6 +213,12 @@ def _ensure_users(session) -> None:
     for name, tg_id in PLAYER_IDS.items():
         session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
         session.add(UserSettings(tg_id=tg_id, theme="real", mode_18plus=False, avatar_grayscale=True))
+        # Auto-join all seed players to the default lobby
+        session.add(ContextMember(
+            context_id=Config.DEFAULT_CONTEXT_ID,
+            tg_id=tg_id,
+            role=LobbyRole.PLAYER.value,
+        ))
 
 
 def _make_team_match(venue: str, team_a: list[str], team_b: list[str], segments: list[dict]) -> TeamMatch:
