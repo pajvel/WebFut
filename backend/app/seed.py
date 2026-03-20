@@ -198,27 +198,37 @@ def _reset_db() -> None:
 
 
 def _ensure_context(session) -> Context:
-    context = Context(
-        id=Config.DEFAULT_CONTEXT_ID,
-        title=Config.DEFAULT_CONTEXT_TITLE,
-    )
-    session.add(context)
-    session.flush()
-    # Create default config for the lobby
-    session.add(ContextConfig(context_id=context.id))
+    context = session.get(Context, Config.DEFAULT_CONTEXT_ID)
+    if not context:
+        context = Context(
+            id=Config.DEFAULT_CONTEXT_ID,
+            title=Config.DEFAULT_CONTEXT_TITLE,
+        )
+        session.add(context)
+        session.flush()
+        # Create default config for the lobby
+        session.add(ContextConfig(context_id=context.id))
     return context
 
 
 def _ensure_users(session) -> None:
     for name, tg_id in PLAYER_IDS.items():
-        session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
-        session.add(UserSettings(tg_id=tg_id, theme="real", mode_18plus=False, avatar_grayscale=True))
+        user = session.get(User, tg_id)
+        if not user:
+            session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
+            session.add(UserSettings(tg_id=tg_id, theme="real", mode_18plus=False, avatar_grayscale=True))
+        
         # Auto-join all seed players to the default lobby
-        session.add(ContextMember(
-            context_id=Config.DEFAULT_CONTEXT_ID,
-            tg_id=tg_id,
-            role=LobbyRole.PLAYER.value,
-        ))
+        member = session.query(ContextMember).filter_by(
+            context_id=Config.DEFAULT_CONTEXT_ID, 
+            tg_id=tg_id
+        ).first()
+        if not member:
+            session.add(ContextMember(
+                context_id=Config.DEFAULT_CONTEXT_ID,
+                tg_id=tg_id,
+                role=LobbyRole.PLAYER.value,
+            ))
 
 
 def _make_team_match(venue: str, team_a: list[str], team_b: list[str], segments: list[dict]) -> TeamMatch:
@@ -342,3 +352,20 @@ def seed_if_empty() -> bool:
     if existing:
         return False
     return seed(reset=False)
+
+
+if __name__ == "__main__":
+    import sys
+    # Always ensure schema first
+    print("Ensuring database schema (migrations)...")
+    ensure_schema()
+    
+    reset_db = "--reset" in sys.argv
+    if reset_db:
+        print("Resetting and seeding database...")
+        seed(reset=True)
+    else:
+        print("Seeding database (only if empty)...")
+        seed_if_empty()
+    
+    print("Database sync complete.")
