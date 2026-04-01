@@ -12,6 +12,8 @@ from ..db import get_db
 from ..models import (
     Context,
     Event,
+    DraftPick,
+    DraftSession,
     Feedback,
     InteractionLog,
     Match,
@@ -828,10 +830,16 @@ def delete_match(match_id: int):
     # 9. Match members
     db.query(MatchMember).filter_by(match_id=match_id).delete()
     
-    # 10. Team variants
+    # 10. Draft picks and sessions
+    draft_sessions = db.query(DraftSession).filter_by(match_id=match_id).all()
+    for ds in draft_sessions:
+        db.query(DraftPick).filter_by(draft_id=ds.id).delete()
+    db.query(DraftSession).filter_by(match_id=match_id).delete()
+    
+    # 11. Team variants
     db.query(TeamVariant).filter_by(match_id=match_id).delete()
     
-    # 11. Team current
+    # 12. Team current
     db.query(TeamCurrent).filter_by(match_id=match_id).delete()
     
     # 12. Сам матч
