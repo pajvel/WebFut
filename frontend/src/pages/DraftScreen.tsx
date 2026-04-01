@@ -140,7 +140,7 @@ export function DraftScreen() {
   };
 
   const isMyTurn =
-    draft?.current_captain_tg_id === me?.tg_id;
+    draft?.current_captain_tg_id === me?.tg_id || me?.is_admin === true;
 
   // ── Render phases ─────────────────────────────────────────────────────
 
@@ -286,7 +286,9 @@ export function DraftScreen() {
                     animate={{ opacity: 1 }}
                     className="mt-1 text-xs font-semibold text-webfut-pink"
                   >
-                    Твой ход! Выбери игрока
+                    {draft.current_captain_tg_id === me?.tg_id
+                      ? "Твой ход! Выбери игрока"
+                      : "Выбери игрока за капитана"}
                   </motion.p>
                 )}
               </div>
