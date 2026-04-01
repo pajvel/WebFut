@@ -112,12 +112,23 @@ def create_lobby():
         role=LobbyRole.SUPER_ADMIN.value,
     )
     db.add(member)
+    db.flush()
     
     # if admin_tg_id is provided, add them as ADMIN
     if admin_tg_id:
         try:
             tg_id_val = int(admin_tg_id)
             if tg_id_val != user.tg_id:
+                # check if the target user actually exists in the app database
+                # if not, create a skeleton user for them
+                target_user = db.query(User).filter_by(tg_id=tg_id_val).one_or_none()
+                if not target_user:
+                    target_user = User(tg_id=tg_id_val, tg_name=f"User {tg_id_val}")
+                    db.add(target_user)
+                    from .me import UserSettings
+                    db.add(UserSettings(tg_id=tg_id_val))
+                    db.flush()
+                    
                 admin_member = ContextMember(
                     context_id=context.id,
                     tg_id=tg_id_val,
@@ -294,6 +305,7 @@ def get_lobby_settings(context_id: int):
         "context": {
             "id": context.id,
             "title": context.title,
+            "password": context.password,
         } if context else None,
         "config": {
             "payments_enabled": config.payments_enabled,
@@ -344,6 +356,34 @@ def patch_lobby_settings(context_id: int):
         context = db.query(Context).filter_by(id=context_id).one_or_none()
         if context:
             context.title = str(data["title"]).strip()
+    # Allow changing password
+    if "password" in data:
+        context = db.query(Context).filter_by(id=context_id).one_or_none()
+        if context:
+            p = str(data["password"]).strip()
+            context.password = p if p else None
+    db.commit()
+    return ok()
+
+
+@bp.delete("/lobbies/<int:context_id>")
+def delete_lobby(context_id: int):
+    """Delete an entire lobby. Only global admins can do this."""
+    user = require_user()
+    db = get_db()
+    if not is_admin(user):
+        return err("forbidden", 403)
+    
+    context = db.query(Context).filter_by(id=context_id).one_or_none()
+    if context is None:
+        return err("lobby_not_found", 404)
+        
+    db.query(ContextMember).filter_by(context_id=context_id).delete()
+    db.query(ContextConfig).filter_by(context_id=context_id).delete()
+    db.query(Venue).filter_by(context_id=context_id).delete()
+    db.delete(context)
+    # Clear default_context_id for anyone who had this lobby as default
+    db.query(User).filter_by(default_context_id=context_id).update({"default_context_id": None})
     db.commit()
     return ok()
 

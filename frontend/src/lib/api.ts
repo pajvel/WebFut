@@ -606,6 +606,12 @@ export function createLobby(payload: { title: string; password?: string; admin_t
   });
 }
 
+export function deleteLobby(contextId: number) {
+  return apiFetch(`/lobbies/${contextId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function setDefaultLobby(contextId: number | null) {
   return apiFetch("/lobbies/set-default", {
     method: "POST",
@@ -630,14 +636,14 @@ export async function leaveLobby(contextId: number) {
 
 export async function getLobbySettings(contextId: number) {
   return apiFetch<{
-    context: { id: number; title: string } | null;
+    context: { id: number; title: string; password?: string | null } | null;
     config: import("./types").LobbyConfig;
     venues: import("./types").LobbyVenue[];
     members: import("./types").LobbyMember[];
   }>(`/lobbies/${contextId}/settings`);
 }
 
-export async function patchLobbySettings(contextId: number, payload: Partial<import("./types").LobbyConfig> & { title?: string }) {
+export async function patchLobbySettings(contextId: number, payload: Partial<import("./types").LobbyConfig> & { title?: string; password?: string }) {
   return apiFetch(`/lobbies/${contextId}/settings`, {
     method: "PATCH",
     body: JSON.stringify(payload)

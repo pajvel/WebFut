@@ -22,8 +22,10 @@ import {
   patchLobbyMember,
   adminListUsers,
   addLobbyMember,
+  deleteLobby,
 } from "../lib/api";
 import type { LobbyConfig, LobbyMember, LobbyVenue, AdminUser } from "../lib/types";
+import { useAppContext } from "../lib/app-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -42,13 +44,16 @@ export function LobbySettings() {
   const { contextId } = useParams<{ contextId: string }>();
   const navigate = useNavigate();
   const lobbyId = Number(contextId);
+  const { me } = useAppContext();
 
   const [title, setTitle] = useState("");
+  const [password, setPassword] = useState("");
   const [config, setConfig] = useState<LobbyConfig | null>(null);
   const [venues, setVenues] = useState<LobbyVenue[]>([]);
   const [members, setMembers] = useState<LobbyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [newVenueName, setNewVenueName] = useState("");
   
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
@@ -62,6 +67,7 @@ export function LobbySettings() {
     try {
       const data = await getLobbySettings(lobbyId);
       setTitle(data?.context?.title ?? "");
+      setPassword(data?.context?.password ?? "");
       setConfig(data?.config ?? null);
       setVenues(data?.venues ?? []);
       setMembers(data?.members ?? []);
@@ -80,7 +86,7 @@ export function LobbySettings() {
     if (!config) return;
     setSaving(true);
     try {
-      await patchLobbySettings(lobbyId, { ...config, title });
+      await patchLobbySettings(lobbyId, { ...config, title, password });
     } catch {
       /* ignore */
     } finally {
@@ -150,6 +156,18 @@ export function LobbySettings() {
      }
   };
 
+  const handleDeleteLobby = async () => {
+    if (!window.confirm("Удалить лобби навсегда? Это действие необратимо!")) return;
+    setDeleting(true);
+    try {
+      await deleteLobby(lobbyId);
+      navigate("/lobbies");
+    } catch (e: any) {
+      alert("Ошибка удаления: " + e.message);
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -184,17 +202,31 @@ export function LobbySettings() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="rounded-2xl border-2 border-[#333] bg-[#111] p-4"
+        className="rounded-2xl border-2 border-[#333] bg-[#111] p-4 space-y-4"
       >
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Название
-        </label>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="w-full rounded-lg bg-black/50 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 transition-all focus:ring-webfut-pink"
-        />
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Название лобби
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-lg bg-black/50 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 transition-all focus:ring-webfut-pink"
+          />
+        </div>
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Пароль для входа (опц.)
+          </label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Оставь пустым, если вход свободный"
+            className="w-full rounded-lg bg-black/50 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 transition-all focus:ring-webfut-pink"
+          />
+        </div>
       </motion.section>
 
       {/* Feature Toggles */}
@@ -376,6 +408,33 @@ export function LobbySettings() {
           })}
         </div>
       </motion.section>
+
+      {/* Global Admin Danger Zone */}
+      {me?.is_admin && (
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="rounded-2xl border-2 border-red-900/50 bg-[#111] p-4 text-center mt-8"
+        >
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-red-500 mb-3 block">
+            Опасная зона
+          </h2>
+          <button
+            onClick={handleDeleteLobby}
+            disabled={deleting}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500 transition-colors hover:bg-red-500/20 active:scale-[0.98] disabled:opacity-50"
+          >
+            {deleting ? (
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+            ) : (
+              <>
+                 <Trash2 className="h-4 w-4" /> Удалить лобби (только гл. админ)
+              </>
+            )}
+          </button>
+        </motion.section>
+      )}
 
       {/* Role Management Dialog */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
