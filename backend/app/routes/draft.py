@@ -70,10 +70,10 @@ def init_draft(match_id: int):
 
     # Check existing draft
     existing = db.query(DraftSession).filter_by(match_id=match_id).one_or_none()
-    if existing and existing.status in (DraftStatus.PICKING.value, DraftStatus.COMPLETED.value):
+    if existing and existing.status == DraftStatus.PICKING.value:
         return err("draft_already_active", 400)
 
-    # Cancel old draft if exists
+    # Cancel old draft if exists (including completed ones for re-draft)
     if existing:
         db.query(DraftPick).filter_by(draft_id=existing.id).delete()
         db.delete(existing)
@@ -459,6 +459,7 @@ def get_draft_status(match_id: int):
         "snake_order": draft.snake_order_json,
         "teams": teams,
         "pool": [info.get(tg, {"tg_id": tg}) for tg in available],
+        "participants": [info.get(tg, {"tg_id": tg}) for tg in all_tg_ids],
         "picks": [
             {
                 "pick_number": p.pick_number,

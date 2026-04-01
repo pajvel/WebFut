@@ -52,6 +52,10 @@ export function DraftScreen() {
       const existing = await getDraftStatus(mid);
       if (existing) {
         setDraft(existing as DraftState);
+        // Populate participants from the response
+        if ((existing as any).participants) {
+          setParticipants((existing as any).participants);
+        }
         setPhase(existing.status);
         return;
       }
@@ -126,6 +130,25 @@ export function DraftScreen() {
       navigate(-1);
     } catch {
       /* ignore */
+    }
+  };
+
+  const handleRedraft = async () => {
+    try {
+      await cancelDraft(mid);
+    } catch {
+      /* ignore cancel errors */
+    }
+    setDraft(null);
+    setPhase("loading");
+    try {
+      const data = await initDraft(mid);
+      setCaptainSuggestions(data?.captain_suggestions ?? []);
+      setParticipants(data?.participants ?? []);
+      setPhase("captain_selection");
+    } catch (e) {
+      setErrorMsg(String(e));
+      setPhase("error");
     }
   };
 
@@ -204,9 +227,9 @@ export function DraftScreen() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <div className="rounded-2xl border-2 border-[#333] bg-[#111] p-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-white">
-              <Crown className="h-4 w-4 text-yellow-400" />
+          <div className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-main)]">
+              <Crown className="h-4 w-4 text-webfut-pink" />
               Выбери пару капитанов
             </h2>
             <p className="mb-4 text-xs text-gray-400">
@@ -222,7 +245,7 @@ export function DraftScreen() {
                   className={`w-full rounded-xl border-2 p-3 text-left transition-colors ${
                     selectedPair === idx
                       ? "border-webfut-pink bg-webfut-pink/10"
-                      : "border-[#333] bg-black/30"
+                      : "border-[var(--border-main)] bg-[var(--bg-page)]"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -262,21 +285,21 @@ export function DraftScreen() {
           <div
             className={`rounded-2xl border-2 p-4 text-center ${
               phase === "completed"
-                ? "border-green-500/50 bg-green-500/10"
+                ? "border-webfut-pink/50 bg-webfut-pink/10"
                 : isMyTurn
                   ? "border-webfut-pink bg-webfut-pink/10"
-                  : "border-[#333] bg-[#111]"
+                  : "border-[var(--border-main)] bg-[var(--bg-surface)]"
             }`}
           >
             {phase === "completed" ? (
-              <div className="flex items-center justify-center gap-2 text-green-400">
+              <div className="flex items-center justify-center gap-2 text-webfut-pink">
                 <Trophy className="h-5 w-5" />
                 <span className="text-sm font-bold">Драфт завершён!</span>
               </div>
             ) : (
               <div>
                 <p className="text-xs text-gray-400">Ход капитана</p>
-                <p className="mt-1 text-lg font-black text-white">
+                <p className="mt-1 text-lg font-black text-[var(--text-main)]">
                   {findPlayer(draft.current_captain_tg_id ?? 0).name ??
                     `#${draft.current_captain_tg_id}`}
                 </p>
@@ -297,7 +320,7 @@ export function DraftScreen() {
 
           {/* Suggested Pair */}
           {phase === "picking" && draft.suggested_pair && draft.suggested_pair.length >= 2 && (
-            <div className="rounded-2xl border-2 border-[#333] bg-[#111] p-4">
+            <div className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Выбери одного
               </h3>
@@ -311,7 +334,7 @@ export function DraftScreen() {
                       whileHover={{ scale: 1.02 }}
                       disabled={picking || !isMyTurn}
                       onClick={() => handlePick(tgId)}
-                      className="flex flex-col items-center gap-2 rounded-xl border-2 border-[#333] bg-black/40 p-4 transition-all hover:border-webfut-pink hover:bg-webfut-pink/10 disabled:opacity-40"
+                      className="flex flex-col items-center gap-2 rounded-xl border-2 border-[var(--border-main)] bg-[var(--bg-page)] p-4 transition-all hover:border-webfut-pink hover:bg-webfut-pink/10 disabled:opacity-40"
                     >
                       {player.avatar ? (
                         <img
@@ -324,7 +347,7 @@ export function DraftScreen() {
                           {(player.name ?? "?")[0]}
                         </div>
                       )}
-                      <span className="text-sm font-semibold text-white">
+                      <span className="text-sm font-semibold text-[var(--text-main)]">
                         {player.name ?? `#${tgId}`}
                       </span>
                       {player.rating !== undefined && (
@@ -343,17 +366,13 @@ export function DraftScreen() {
           <div className="grid grid-cols-2 gap-3">
             <TeamColumn
               label="Команда A"
-              color="text-blue-400"
-              borderColor="border-blue-500/30"
-              bgColor="bg-blue-500/5"
+              accent={false}
               players={(draft.teams?.A ?? []).map((id) => findPlayer(id))}
               captainTgId={draft.captain_a?.tg_id}
             />
             <TeamColumn
               label="Команда B"
-              color="text-red-400"
-              borderColor="border-red-500/30"
-              bgColor="bg-red-500/5"
+              accent={true}
               players={(draft.teams?.B ?? []).map((id) => findPlayer(id))}
               captainTgId={draft.captain_b?.tg_id}
             />
@@ -377,15 +396,15 @@ export function DraftScreen() {
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => navigate(`/matches/${mid}/teams`)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-green-500/50 bg-green-500/10 py-3 text-sm font-bold text-green-400"
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-webfut-pink bg-webfut-pink/20 py-3 text-sm font-bold text-webfut-pink"
               >
                 <Check className="h-4 w-4" />
                 Применить
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.95 }}
-                onClick={loadDraft}
-                className="flex items-center justify-center gap-2 rounded-2xl border-2 border-[#333] bg-[#111] px-4 py-3 text-sm font-bold text-gray-400"
+                onClick={handleRedraft}
+                className="flex items-center justify-center gap-2 rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-bold text-gray-400"
               >
                 <RotateCcw className="h-4 w-4" />
               </motion.button>
@@ -398,7 +417,7 @@ export function DraftScreen() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="rounded-2xl border-2 border-[#333] bg-[#111] p-4"
+              className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4"
             >
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 История пиков
@@ -416,13 +435,13 @@ export function DraftScreen() {
                     <span
                       className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
                         pick.assigned_team === "A"
-                          ? "bg-blue-500/20 text-blue-400"
-                          : "bg-red-500/20 text-red-400"
+                          ? "bg-white/10 text-[var(--text-main)]"
+                          : "bg-webfut-pink/20 text-webfut-pink"
                       }`}
                     >
                       {pick.assigned_team}
                     </span>
-                    <span className="text-gray-300">
+                    <span className="text-[var(--text-main)]">
                       {findPlayer(pick.picked_tg_id).name ?? `#${pick.picked_tg_id}`}
                     </span>
                     {pick.auto_assigned_tg_id && (
@@ -431,13 +450,13 @@ export function DraftScreen() {
                         <span
                           className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
                             pick.auto_assigned_team === "A"
-                              ? "bg-blue-500/20 text-blue-400"
-                              : "bg-red-500/20 text-red-400"
+                              ? "bg-white/10 text-[var(--text-main)]"
+                              : "bg-webfut-pink/20 text-webfut-pink"
                           }`}
                         >
                           {pick.auto_assigned_team}
                         </span>
-                        <span className="text-gray-300">
+                        <span className="text-[var(--text-main)]">
                           {findPlayer(pick.auto_assigned_tg_id).name ??
                             `#${pick.auto_assigned_tg_id}`}
                         </span>
@@ -477,7 +496,7 @@ function PlayerBadge({
         </div>
       )}
       <div>
-        <div className="text-sm font-semibold text-white">
+        <div className="text-sm font-semibold text-[var(--text-main)]">
           {player.name ?? `#${player.tg_id}`}
         </div>
         {player.rating !== undefined && (
@@ -492,22 +511,24 @@ function PlayerBadge({
 
 function TeamColumn({
   label,
-  color,
-  borderColor,
-  bgColor,
+  accent,
   players,
   captainTgId,
 }: {
   label: string;
-  color: string;
-  borderColor: string;
-  bgColor: string;
+  accent: boolean;
   players: DraftParticipant[];
   captainTgId?: number;
 }) {
   return (
-    <div className={`rounded-2xl border-2 ${borderColor} ${bgColor} p-3`}>
-      <h3 className={`mb-2 text-xs font-bold uppercase tracking-wider ${color}`}>
+    <div className={`rounded-2xl border-2 p-3 ${
+      accent
+        ? "border-webfut-pink/30 bg-webfut-pink/5"
+        : "border-[var(--border-main)] bg-[var(--bg-surface)]"
+    }`}>
+      <h3 className={`mb-2 text-xs font-bold uppercase tracking-wider ${
+        accent ? "text-webfut-pink" : "text-[var(--text-main)] opacity-60"
+      }`}>
         {label}
       </h3>
       <div className="space-y-1.5">
@@ -531,11 +552,11 @@ function TeamColumn({
                   {(player.name ?? "?")[0]}
                 </div>
               )}
-              <span className="flex-1 truncate text-xs font-medium text-white">
+              <span className="flex-1 truncate text-xs font-medium text-[var(--text-main)]">
                 {player.name ?? `#${player.tg_id}`}
               </span>
               {player.tg_id === captainTgId && (
-                <Crown className="h-3 w-3 text-yellow-400" />
+                <Crown className="h-3 w-3 text-webfut-pink" />
               )}
             </motion.div>
           ))}

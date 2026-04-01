@@ -138,7 +138,7 @@ export function MatchLobby() {
       .catch((err) => setError(formatApiError(err)));
     
     getDraftStatus(Number(matchId))
-      .then(st => setDraftActive(st.status !== 'cancelled' && st.status !== 'completed'))
+      .then(st => setDraftActive(st.status !== 'cancelled'))
       .catch(() => setDraftActive(false));
   };
 
@@ -172,7 +172,7 @@ export function MatchLobby() {
 
       getDraftStatus(Number(matchId))
         .then(st => {
-           if (alive) setDraftActive(st.status !== 'cancelled' && st.status !== 'completed');
+           if (alive) setDraftActive(st.status !== 'cancelled');
         })
         .catch(() => alive && setDraftActive(false));
     };
