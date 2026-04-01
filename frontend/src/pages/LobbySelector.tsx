@@ -111,8 +111,11 @@ export function LobbySelector() {
           <h1 className="text-2xl font-black tracking-tight text-white">
             Мои лобби
           </h1>
-          <p className="mt-1 text-sm text-gray-400">
-            Переключайся между площадками
+          <p className="mt-1 text-sm flex items-center gap-2">
+            <span className="text-gray-400">Переключайся между площадками</span>
+            <span className="text-[10px] bg-white/10 text-white px-2 py-0.5 rounded-full font-bold">
+              ID: {me?.tg_id || "..."}
+            </span>
           </p>
         </div>
         {me && (
