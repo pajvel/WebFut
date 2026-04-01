@@ -291,7 +291,13 @@ def get_lobby_settings(context_id: int):
             return err("forbidden", 403)
     config = db.query(ContextConfig).filter_by(context_id=context_id).one_or_none()
     if config is None:
-        return err("lobby_not_found", 404)
+        context = db.query(Context).filter_by(id=context_id).one_or_none()
+        if context is None:
+            return err("lobby_not_found", 404)
+        config = ContextConfig(context_id=context_id)
+        db.add(config)
+        db.commit()
+        db.refresh(config)
     context = db.query(Context).filter_by(id=context_id).one_or_none()
     venues = db.query(Venue).filter_by(context_id=context_id).order_by(Venue.name.asc()).all()
     members = (
@@ -341,7 +347,12 @@ def patch_lobby_settings(context_id: int):
             return err("forbidden", 403)
     config = db.query(ContextConfig).filter_by(context_id=context_id).one_or_none()
     if config is None:
-        return err("lobby_not_found", 404)
+        context = db.query(Context).filter_by(id=context_id).one_or_none()
+        if context is None:
+            return err("lobby_not_found", 404)
+        config = ContextConfig(context_id=context_id)
+        db.add(config)
+        db.flush()
     data = request.get_json(silent=True) or {}
     if "payments_enabled" in data:
         config.payments_enabled = bool(data["payments_enabled"])
