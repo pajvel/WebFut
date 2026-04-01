@@ -201,7 +201,7 @@ export function LobbySelector() {
                 </motion.button>
               )}
 
-              {(lobby.role === "admin" || lobby.role === "super_admin") && (
+              {(lobby.role === "admin" || lobby.role === "super_admin" || me?.is_admin) && (
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   onClick={() => navigate(`/lobbies/${lobby.id}/settings`)}
