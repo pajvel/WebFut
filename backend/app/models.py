@@ -85,7 +85,8 @@ class UserSettings(Base):
 class Context(Base):
     __tablename__ = "contexts"
     id = Column(Integer, primary_key=True)
-    title = Column(String, nullable=False)
+    title = Column(String, nullable=False, unique=True)
+    password = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 

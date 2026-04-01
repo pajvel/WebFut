@@ -86,10 +86,21 @@ def create_lobby():
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "").strip()
+    password = data.get("password") or None
+    if password:
+        password = str(password).strip()
+    admin_tg_id = data.get("admin_tg_id")
+
     if not title:
         return err("missing_title", 400)
     db = get_db()
-    context = Context(title=title)
+    
+    # Check for existing title to avoid SQL exception
+    existing = db.query(Context).filter_by(title=title).one_or_none()
+    if existing:
+        return err("title_in_use", 400)
+        
+    context = Context(title=title, password=password)
     db.add(context)
     db.flush()  # to get context.id
     config = ContextConfig(context_id=context.id)
@@ -101,6 +112,21 @@ def create_lobby():
         role=LobbyRole.SUPER_ADMIN.value,
     )
     db.add(member)
+    
+    # if admin_tg_id is provided, add them as ADMIN
+    if admin_tg_id:
+        try:
+            tg_id_val = int(admin_tg_id)
+            if tg_id_val != user.tg_id:
+                admin_member = ContextMember(
+                    context_id=context.id,
+                    tg_id=tg_id_val,
+                    role=LobbyRole.ADMIN.value,
+                )
+                db.add(admin_member)
+        except (ValueError, TypeError):
+            pass
+
     db.commit()
     return ok({"id": context.id})
 
@@ -125,9 +151,49 @@ def set_default_lobby():
     return ok()
 
 
+@bp.post("/lobbies/join-by-pass")
+def join_lobby_by_password():
+    """Join a lobby using title and password."""
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    password = data.get("password") or None
+
+    if password:
+        password = str(password).strip()
+        
+    if not title:
+        return err("missing_title", 400)
+        
+    db = get_db()
+    context = db.query(Context).filter_by(title=title).one_or_none()
+    if context is None:
+        return err("lobby_not_found", 404)
+        
+    if context.password and context.password != password:
+        return err("invalid_password", 403)
+        
+    existing = (
+        db.query(ContextMember)
+        .filter_by(context_id=context.id, tg_id=user.tg_id)
+        .one_or_none()
+    )
+    if existing:
+        return ok({"role": existing.role, "already_member": True, "id": context.id})
+        
+    member = ContextMember(
+        context_id=context.id,
+        tg_id=user.tg_id,
+        role=LobbyRole.PLAYER.value,
+    )
+    db.add(member)
+    db.commit()
+    return ok({"role": member.role, "already_member": False, "id": context.id})
+
+
 @bp.post("/lobbies/<int:context_id>/join")
 def join_lobby(context_id: int):
-    """Join a lobby. If already a member — return current membership."""
+    """Join a lobby (bypassing password, e.g. from an invite link, though unused now)."""
     user = require_user()
     db = get_db()
     context = db.query(Context).filter_by(id=context_id).one_or_none()

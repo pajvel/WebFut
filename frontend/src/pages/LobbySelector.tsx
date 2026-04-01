@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Building2, ChevronRight, Crown, Star, Users, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { fetchLobbies, setDefaultLobby, createLobby } from "../lib/api";
+import { fetchLobbies, setDefaultLobby, createLobby, joinLobbyByPass } from "../lib/api";
 import { useAppContext } from "../lib/app-context";
 import type { Lobby } from "../lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -28,7 +28,10 @@ export function LobbySelector() {
   const [lobbies, setLobbies] = useState<Lobby[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "join">("join");
   const [newTitle, setNewTitle] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [adminTgId, setAdminTgId] = useState("");
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,13 +65,27 @@ export function LobbySelector() {
     if (!title) return;
     setCreating(true);
     try {
-      const data = await createLobby({ title });
+      let data;
+      if (modalMode === "create") {
+         data = await createLobby({ 
+            title, 
+            password: newPassword,
+            admin_tg_id: adminTgId ? Number(adminTgId) : undefined 
+         });
+      } else {
+         data = await joinLobbyByPass({ title, password: newPassword });
+      }
       setCreateOpen(false);
       setNewTitle("");
+      setNewPassword("");
+      setAdminTgId("");
       load();
-      if (data?.id) navigate(`/lobbies/${data.id}/settings`);
-    } catch {
-      /* ignore */
+      if (modalMode === "create" && data?.id) navigate(`/lobbies/${data.id}/settings`);
+    } catch (err: any) {
+      if (err.status === 403) alert("Неверный пароль или доступ запрещен");
+      else if (err.status === 404) alert("Лобби не найдено");
+      else if (err.status === 400 && err.data?.error === "title_in_use") alert("Такое название уже занято");
+      else alert("Ошибка при выполнении операции");
     } finally {
       setCreating(false);
     }
@@ -98,10 +115,10 @@ export function LobbySelector() {
             Переключайся между площадками
           </p>
         </div>
-        {me?.is_admin && (
+        {me && (
            <motion.button
              whileTap={{ scale: 0.95 }}
-             onClick={() => setCreateOpen(true)}
+             onClick={() => { setModalMode("join"); setCreateOpen(true); }}
              className="flex h-10 w-10 items-center justify-center rounded-xl bg-webfut-pink text-white shadow-lg"
            >
              <Plus className="h-6 w-6" />
@@ -217,13 +234,30 @@ export function LobbySelector() {
         </motion.div>
       )}
 
-      {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="bg-[#111] border-[#333] text-white">
           <DialogHeader>
-            <DialogTitle>Создать новое лобби</DialogTitle>
+            <DialogTitle>
+               {modalMode === "join" ? "Войти в лобби" : "Создать лобби"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div className="flex gap-2 p-1 bg-black/50 rounded-lg mt-2 mb-2">
+            <button
+               onClick={() => setModalMode("join")}
+               className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${modalMode === "join" ? "bg-white/10 text-white" : "text-gray-500 hover:text-white"}`}
+            >
+               Войти
+            </button>
+            {me?.is_admin && (
+               <button
+                  onClick={() => setModalMode("create")}
+                  className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${modalMode === "create" ? "bg-white/10 text-white" : "text-gray-500 hover:text-white"}`}
+               >
+                  Создать
+               </button>
+            )}
+          </div>
+          <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Название</label>
               <input
@@ -236,12 +270,37 @@ export function LobbySelector() {
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Пароль (опционально)</label>
+              <input
+                type="text"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Оставьте пустым, если нет пароля"
+                className="w-full rounded-xl bg-black px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-webfut-pink"
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              />
+            </div>
+            {modalMode === "create" && (
+               <div className="space-y-2">
+                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Telegram ID админа лобби (опционально)</label>
+                 <input
+                   type="text"
+                   value={adminTgId}
+                   onChange={(e) => setAdminTgId(e.target.value)}
+                   placeholder="ID пользователя, который будет админом"
+                   className="w-full rounded-xl bg-black px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-webfut-pink"
+                   onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                 />
+                 <p className="text-[10px] text-gray-500 mt-1">Оставь пустым, лобби можно настроить позже.</p>
+               </div>
+            )}
             <button
               onClick={handleCreate}
               disabled={creating || !newTitle.trim()}
               className="w-full rounded-xl bg-webfut-pink py-3 font-bold text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
             >
-              {creating ? "Создание..." : "Создать лобби"}
+              {creating ? "Ожидание..." : (modalMode === "join" ? "Войти" : "Создать лобби")}
             </button>
           </div>
         </DialogContent>

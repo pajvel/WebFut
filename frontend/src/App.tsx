@@ -1,10 +1,10 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { BootSplash } from "./components/BootSplash";
 import { TopBar } from "./components/TopBar";
 import { ensureTelegramAuth } from "./lib/auth";
-import { getMe, getSettings, patchSettings, ApiError, fetchMatches, getProfile, getLeaderboard } from "./lib/api";
+import { getMe, getSettings, patchSettings, ApiError, fetchMatches, getProfile, getLeaderboard, fetchLobbies } from "./lib/api";
 import { AppContext } from "./lib/app-context";
 import type { Me, Settings } from "./lib/types";
 import { formatApiError } from "./lib/errors";
@@ -20,6 +20,7 @@ export default function App() {
   const [bootStage, setBootStage] = useState("Initializing");
   const [canFastFinishBoot, setCanFastFinishBoot] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const isProfile = location.pathname === "/profile";
   const isAdmin = location.pathname.startsWith("/admin");
 
@@ -76,7 +77,14 @@ export default function App() {
         getSettings().then(data => { if (!cancelled) setSettings(data); }),
         fetchMatches().catch(() => undefined),
         getProfile().catch(() => undefined),
-        getLeaderboard().catch(() => undefined)
+        getLeaderboard().catch(() => undefined),
+        fetchLobbies().then(result => {
+           if (!cancelled && result && result.default_context_id === null) {
+              if (location.pathname !== "/lobbies") {
+                 navigate("/lobbies");
+              }
+           }
+        }).catch(() => undefined)
       ];
 
       try {

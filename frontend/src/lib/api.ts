@@ -599,7 +599,7 @@ export async function fetchLobbies() {
   return apiFetch<{ lobbies: import("./types").Lobby[]; default_context_id: number | null }>("/lobbies");
 }
 
-export function createLobby(payload: { title: string }) {
+export function createLobby(payload: { title: string; password?: string; admin_tg_id?: number }) {
   return apiFetch<{ id: number }>("/lobbies", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -615,6 +615,13 @@ export async function setDefaultLobby(contextId: number | null) {
 
 export async function joinLobby(contextId: number) {
   return apiFetch<{ role: string; already_member: boolean }>(`/lobbies/${contextId}/join`, { method: "POST" });
+}
+
+export async function joinLobbyByPass(payload: { title: string; password?: string }) {
+  return apiFetch<{ role: string; already_member: boolean; id: number }>(`/lobbies/join-by-pass`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function leaveLobby(contextId: number) {
