@@ -125,7 +125,7 @@ def create_lobby():
                 if not target_user:
                     target_user = User(tg_id=tg_id_val, tg_name=f"User {tg_id_val}")
                     db.add(target_user)
-                    from .me import UserSettings
+                    from ..models import UserSettings
                     db.add(UserSettings(tg_id=tg_id_val))
                     db.flush()
                     

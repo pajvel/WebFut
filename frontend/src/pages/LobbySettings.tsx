@@ -190,11 +190,25 @@ export function LobbySettings() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-white">
-            Настройки лобби
+        <div className="flex-1">
+          <h1 className="text-xl font-black uppercase tracking-tight text-white leading-none">
+            Настройки
           </h1>
+          <span className="text-[10px] text-gray-500 font-bold">
+             ID: {me?.tg_id || "..."}
+          </span>
         </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-webfut-pink/20 text-webfut-pink transition-all hover:bg-webfut-pink/30 active:scale-95 disabled:opacity-50"
+        >
+          {saving ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-webfut-pink border-t-transparent" />
+          ) : (
+            <Save className="h-5 w-5" />
+          )}
+        </button>
       </motion.div>
 
       {/* Title */}
