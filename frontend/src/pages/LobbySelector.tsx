@@ -9,14 +9,12 @@ import type { Lobby } from "../lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Суперадмин",
   admin: "Админ",
   organizer: "Организатор",
   player: "Игрок",
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  super_admin: "text-yellow-400",
   admin: "text-webfut-pink",
   organizer: "text-blue-400",
   player: "text-gray-400",
@@ -111,11 +109,8 @@ export function LobbySelector() {
           <h1 className="text-2xl font-black tracking-tight text-white">
             Мои лобби
           </h1>
-          <p className="mt-1 text-sm flex items-center gap-2">
-            <span className="text-gray-400">Переключайся между площадками</span>
-            <span className="text-[10px] bg-white/10 text-white px-2 py-0.5 rounded-full font-bold">
-              ID: {me?.tg_id || "..."}
-            </span>
+          <p className="mt-1 text-sm text-gray-400">
+            Переключайся между площадками
           </p>
         </div>
         {me && (

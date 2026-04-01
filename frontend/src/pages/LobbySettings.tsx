@@ -29,14 +29,12 @@ import { useAppContext } from "../lib/app-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Суперадмин",
   admin: "Админ",
   organizer: "Организатор",
   player: "Игрок",
 };
 
 const ROLE_ICONS: Record<string, typeof Crown> = {
-  super_admin: Shield,
   admin: Crown,
 };
 

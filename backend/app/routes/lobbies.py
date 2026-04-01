@@ -109,7 +109,7 @@ def create_lobby():
     member = ContextMember(
         context_id=context.id,
         tg_id=user.tg_id,
-        role=LobbyRole.SUPER_ADMIN.value,
+        role=LobbyRole.ADMIN.value,
     )
     db.add(member)
     db.flush()
