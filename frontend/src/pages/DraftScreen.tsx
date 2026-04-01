@@ -45,6 +45,9 @@ export function DraftScreen() {
   const [selectedPair, setSelectedPair] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [picking, setPicking] = useState(false);
+  const [manualCaptainMode, setManualCaptainMode] = useState(false);
+  const [manualCaptainA, setManualCaptainA] = useState<number | null>(null);
+  const [manualCaptainB, setManualCaptainB] = useState<number | null>(null);
 
   /** Try to resume or start fresh. */
   const loadDraft = useCallback(async () => {
@@ -81,18 +84,43 @@ export function DraftScreen() {
   // ── Captain Selection ─────────────────────────────────────────────────
 
   const handleSelectCaptains = async () => {
-    const pair = captainSuggestions[selectedPair];
-    if (!pair) return;
+    let captA: number;
+    let captB: number;
+    if (manualCaptainMode) {
+      if (!manualCaptainA || !manualCaptainB) return;
+      captA = manualCaptainA;
+      captB = manualCaptainB;
+    } else {
+      const pair = captainSuggestions[selectedPair];
+      if (!pair) return;
+      captA = pair.captain_a.tg_id;
+      captB = pair.captain_b.tg_id;
+    }
     try {
-      const data = await setDraftCaptains(
-        mid,
-        pair.captain_a.tg_id,
-        pair.captain_b.tg_id
-      );
+      const data = await setDraftCaptains(mid, captA, captB);
       setDraft(data as DraftState);
       setPhase("picking");
     } catch (e) {
       setErrorMsg(String(e));
+    }
+  };
+
+  const handleManualCaptainTap = (tgId: number) => {
+    if (manualCaptainA === tgId) {
+      setManualCaptainA(null);
+      return;
+    }
+    if (manualCaptainB === tgId) {
+      setManualCaptainB(null);
+      return;
+    }
+    if (!manualCaptainA) {
+      setManualCaptainA(tgId);
+    } else if (!manualCaptainB) {
+      setManualCaptainB(tgId);
+    } else {
+      // Replace B with new pick
+      setManualCaptainB(tgId);
     }
   };
 
@@ -227,46 +255,129 @@ export function DraftScreen() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <div className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-main)]">
-              <Crown className="h-4 w-4 text-webfut-pink" />
-              Выбери пару капитанов
-            </h2>
-            <p className="mb-4 text-xs text-gray-400">
-              ИИ подобрал пары по ближайшему рейтингу
-            </p>
-
-            <div className="space-y-2">
-              {captainSuggestions.map((s, idx) => (
-                <motion.button
-                  key={idx}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setSelectedPair(idx)}
-                  className={`w-full rounded-xl border-2 p-3 text-left transition-colors ${
-                    selectedPair === idx
-                      ? "border-webfut-pink bg-webfut-pink/10"
-                      : "border-[var(--border-main)] bg-[var(--bg-page)]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <PlayerBadge player={s.captain_a} team="A" />
-                      <span className="text-xs font-bold text-gray-500">vs</span>
-                      <PlayerBadge player={s.captain_b} team="B" />
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Δ {s.diff.toFixed(1)}
-                    </div>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
+          {/* Mode toggle */}
+          <div className="flex rounded-xl border-2 border-[var(--border-main)] overflow-hidden">
+            <button
+              onClick={() => setManualCaptainMode(false)}
+              className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                !manualCaptainMode
+                  ? "bg-webfut-pink/20 text-webfut-pink"
+                  : "bg-[var(--bg-surface)] text-gray-500"
+              }`}
+            >
+              ИИ подбор
+            </button>
+            <button
+              onClick={() => setManualCaptainMode(true)}
+              className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                manualCaptainMode
+                  ? "bg-webfut-pink/20 text-webfut-pink"
+                  : "bg-[var(--bg-surface)] text-gray-500"
+              }`}
+            >
+              Выбрать вручную
+            </button>
           </div>
+
+          {!manualCaptainMode ? (
+            /* AI suggestions */
+            <div className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-main)]">
+                <Crown className="h-4 w-4 text-webfut-pink" />
+                Выбери пару капитанов
+              </h2>
+              <p className="mb-4 text-xs text-gray-400">
+                ИИ подобрал пары по ближайшему рейтингу
+              </p>
+              <div className="space-y-2">
+                {captainSuggestions.map((s, idx) => (
+                  <motion.button
+                    key={idx}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setSelectedPair(idx)}
+                    className={`w-full rounded-xl border-2 p-3 text-left transition-colors ${
+                      selectedPair === idx
+                        ? "border-webfut-pink bg-webfut-pink/10"
+                        : "border-[var(--border-main)] bg-[var(--bg-page)]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <PlayerBadge player={s.captain_a} team="A" />
+                        <span className="text-xs font-bold text-gray-500">vs</span>
+                        <PlayerBadge player={s.captain_b} team="B" />
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Δ {s.diff.toFixed(1)}
+                      </div>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Manual selection */
+            <div className="rounded-2xl border-2 border-[var(--border-main)] bg-[var(--bg-surface)] p-4">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-main)]">
+                <Crown className="h-4 w-4 text-webfut-pink" />
+                Нажми на двух игроков
+              </h2>
+              <p className="mb-4 text-xs text-gray-400">
+                {manualCaptainA && manualCaptainB
+                  ? "Оба капитана выбраны!"
+                  : manualCaptainA
+                    ? "Выбери второго капитана"
+                    : "Выбери первого капитана"}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {participants.map((p) => {
+                  const isA = manualCaptainA === p.tg_id;
+                  const isB = manualCaptainB === p.tg_id;
+                  const isSelected = isA || isB;
+                  return (
+                    <motion.button
+                      key={p.tg_id}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleManualCaptainTap(p.tg_id)}
+                      className={`flex items-center gap-2 rounded-xl border-2 p-2.5 text-left transition-all ${
+                        isSelected
+                          ? "border-webfut-pink bg-webfut-pink/10"
+                          : "border-[var(--border-main)] bg-[var(--bg-page)]"
+                      }`}
+                    >
+                      {p.avatar ? (
+                        <img src={p.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-gray-400">
+                          {(p.name ?? "?")[0]}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-[var(--text-main)] truncate">
+                          {p.name ?? `#${p.tg_id}`}
+                        </div>
+                        {p.rating !== undefined && (
+                          <div className="text-[10px] text-gray-500">R: {p.rating.toFixed(1)}</div>
+                        )}
+                      </div>
+                      {isA && (
+                        <span className="text-[10px] font-bold text-webfut-pink">К1</span>
+                      )}
+                      {isB && (
+                        <span className="text-[10px] font-bold text-webfut-pink">К2</span>
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={handleSelectCaptains}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-webfut-pink bg-webfut-pink/20 py-3 text-sm font-bold text-webfut-pink"
+            disabled={manualCaptainMode && (!manualCaptainA || !manualCaptainB)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-webfut-pink bg-webfut-pink/20 py-3 text-sm font-bold text-webfut-pink disabled:opacity-30"
           >
             <Swords className="h-4 w-4" />
             Начать драфт
