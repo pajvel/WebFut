@@ -18,7 +18,15 @@ import { Input } from "../components/ui/input";
 import { formatApiError } from "../lib/errors";
 import { resolveMediaUrl } from "../lib/media";
 import { formatVenueLabel } from "../lib/venue";
-import { PROFILE_THEMES, applyProfileTheme } from "../lib/profile-theme";
+import {
+  PROFILE_THEMES,
+  applyProfileTheme,
+  getStoredAvatarGrayscale,
+  getStoredProfileThemeId,
+  isDarkProfileTheme,
+  normalizeProfileThemeId,
+  persistAvatarGrayscale,
+} from "../lib/profile-theme";
 import { formatDateShortMsk } from "../lib/datetime";
 
 const emptyStats: ProfileStats = {
@@ -122,12 +130,10 @@ export function Profile() {
   const [draftName, setDraftName] = useState("");
   const [draftFile, setDraftFile] = useState<File | null>(null);
   const [resetToTelegramAvatar, setResetToTelegramAvatar] = useState(false);
-  const [profileThemeId, setProfileThemeId] = useState(
-    () => localStorage.getItem("profile_theme") || PROFILE_THEMES[0].id
-  );
+  const [profileThemeId, setProfileThemeId] = useState(() => getStoredProfileThemeId());
   const [saving, setSaving] = useState(false);
   const [avatarOverride, setAvatarOverride] = useState<string | null>(null);
-  const [avatarGrayscale, setAvatarGrayscale] = useState(true);
+  const [avatarGrayscale, setAvatarGrayscale] = useState(() => getStoredAvatarGrayscale());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editOpen = searchParams.get("view") === "edit";
 
@@ -173,15 +179,14 @@ export function Profile() {
   }, [searchParams]);
 
   useEffect(() => {
-    applyProfileTheme(profileThemeId);
+    const theme = applyProfileTheme(profileThemeId);
+    document.documentElement.classList.toggle("dark", isDarkProfileTheme(theme.id));
   }, [profileThemeId]);
 
   useEffect(() => {
     const incomingTheme = settings?.theme || "";
     if (!incomingTheme) return;
-    const exists = PROFILE_THEMES.some((theme) => theme.id === incomingTheme);
-    if (!exists) return;
-    setProfileThemeId(incomingTheme);
+    setProfileThemeId(normalizeProfileThemeId(incomingTheme));
   }, [settings?.theme]);
 
   useEffect(() => {
@@ -189,7 +194,7 @@ export function Profile() {
       setDraftName(me?.custom_name || me?.tg_name || "");
       setDraftFile(null);
       setResetToTelegramAvatar(false);
-      setAvatarGrayscale(settings?.avatar_grayscale !== false);
+      setAvatarGrayscale(settings?.avatar_grayscale ?? getStoredAvatarGrayscale());
     }
   }, [editOpen, me?.custom_name, me?.tg_name, settings?.avatar_grayscale]);
 
@@ -225,13 +230,16 @@ export function Profile() {
         await patchMe({ custom_name: nextName || null });
       }
       const nextThemeId = profileThemeId;
-      const hasThemeChange = nextThemeId !== (settings?.theme || "");
-      const hasGrayscaleChange = avatarGrayscale !== (settings?.avatar_grayscale !== false);
+      const currentThemeId = normalizeProfileThemeId(settings?.theme || getStoredProfileThemeId());
+      const currentAvatarGrayscale = settings?.avatar_grayscale ?? getStoredAvatarGrayscale();
+      const hasThemeChange = nextThemeId !== currentThemeId;
+      const hasGrayscaleChange = avatarGrayscale !== currentAvatarGrayscale;
       if (hasThemeChange || hasGrayscaleChange) {
         await patchSettings({
           avatar_grayscale: avatarGrayscale,
           theme: nextThemeId
         });
+        persistAvatarGrayscale(avatarGrayscale);
       }
       if (resetToTelegramAvatar) {
         await patchMe({ custom_avatar: null });

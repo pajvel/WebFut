@@ -155,10 +155,20 @@ def ensure_schema() -> None:
             text("ALTER TABLE team_current ADD COLUMN IF NOT EXISTS last_notify_hash TEXT")
         )
         conn.execute(
-            text("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS avatar_grayscale BOOLEAN DEFAULT TRUE")
+            text("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS avatar_grayscale BOOLEAN DEFAULT FALSE")
+        )
+        if engine.dialect.name != "sqlite":
+            conn.execute(
+                text("ALTER TABLE user_settings ALTER COLUMN theme SET DEFAULT 'juve'")
+            )
+            conn.execute(
+                text("ALTER TABLE user_settings ALTER COLUMN avatar_grayscale SET DEFAULT FALSE")
+            )
+        conn.execute(
+            text("UPDATE user_settings SET theme = 'juve' WHERE theme IS NULL")
         )
         conn.execute(
-            text("UPDATE user_settings SET avatar_grayscale = TRUE WHERE avatar_grayscale IS NULL")
+            text("UPDATE user_settings SET avatar_grayscale = FALSE WHERE avatar_grayscale IS NULL")
         )
         # --- SaaS multi-tenant migrations ---
         conn.execute(
@@ -216,7 +226,7 @@ def _ensure_users(session) -> None:
         user = session.get(User, tg_id)
         if not user:
             session.add(User(tg_id=tg_id, tg_name=name, tg_avatar=None))
-            session.add(UserSettings(tg_id=tg_id, theme="real", mode_18plus=False, avatar_grayscale=True))
+            session.add(UserSettings(tg_id=tg_id, theme="juve", mode_18plus=False, avatar_grayscale=False))
         
         # Auto-join all seed players to the default lobby
         member = session.query(ContextMember).filter_by(

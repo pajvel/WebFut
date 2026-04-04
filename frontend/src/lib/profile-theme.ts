@@ -4,6 +4,11 @@ export type ProfileTheme = {
   colors: Record<string, string>;
 };
 
+export const DEFAULT_PROFILE_THEME_ID = "juve";
+export const PROFILE_THEME_STORAGE_KEY = "profile_theme";
+export const AVATAR_GRAYSCALE_STORAGE_KEY = "avatar_grayscale";
+export const DEFAULT_AVATAR_GRAYSCALE = false;
+
 export const PROFILE_THEMES: ProfileTheme[] = [
   {
     id: "real",
@@ -127,13 +132,62 @@ export const PROFILE_THEMES: ProfileTheme[] = [
   }
 ];
 
+const DARK_PROFILE_THEME_IDS = new Set(PROFILE_THEMES.slice(5).map((theme) => theme.id));
+
+export function normalizeProfileThemeId(themeId: string | null | undefined): string {
+  const mappedTheme =
+    themeId === "light"
+      ? "real"
+      : themeId === "dark"
+        ? "juve"
+        : themeId;
+  if (typeof mappedTheme === "string" && PROFILE_THEMES.some((item) => item.id === mappedTheme)) {
+    return mappedTheme;
+  }
+  return DEFAULT_PROFILE_THEME_ID;
+}
+
+export function isDarkProfileTheme(themeId: string | null | undefined) {
+  return DARK_PROFILE_THEME_IDS.has(normalizeProfileThemeId(themeId));
+}
+
+export function getStoredProfileThemeId() {
+  if (typeof window === "undefined") {
+    return DEFAULT_PROFILE_THEME_ID;
+  }
+  return normalizeProfileThemeId(localStorage.getItem(PROFILE_THEME_STORAGE_KEY));
+}
+
+export function getStoredAvatarGrayscale() {
+  if (typeof window === "undefined") {
+    return DEFAULT_AVATAR_GRAYSCALE;
+  }
+  const stored = localStorage.getItem(AVATAR_GRAYSCALE_STORAGE_KEY);
+  if (stored === null) {
+    return DEFAULT_AVATAR_GRAYSCALE;
+  }
+  return stored === "true";
+}
+
+export function persistAvatarGrayscale(value: boolean) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(AVATAR_GRAYSCALE_STORAGE_KEY, value ? "true" : "false");
+  }
+  return value;
+}
+
 export function applyProfileTheme(themeId: string | null | undefined) {
-  const fallback = PROFILE_THEMES[0];
-  const theme = PROFILE_THEMES.find((item) => item.id === themeId) || fallback;
+  const normalizedThemeId = normalizeProfileThemeId(themeId);
+  const theme =
+    PROFILE_THEMES.find((item) => item.id === normalizedThemeId) ||
+    PROFILE_THEMES.find((item) => item.id === DEFAULT_PROFILE_THEME_ID) ||
+    PROFILE_THEMES[0];
   Object.entries(theme.colors).forEach(([key, value]) => {
     document.documentElement.style.setProperty(key, value);
   });
-  localStorage.setItem("profile_theme", theme.id);
+  if (typeof window !== "undefined") {
+    localStorage.setItem(PROFILE_THEME_STORAGE_KEY, theme.id);
+  }
   return theme;
 }
 

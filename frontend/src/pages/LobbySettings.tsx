@@ -9,7 +9,6 @@ import {
   Trash2,
   Users,
   Crown,
-  Shield,
   Search,
   UserPlus,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import {
   patchLobbyMember,
   adminListUsers,
   addLobbyMember,
+  deleteLobbyMember,
   deleteLobby,
 } from "../lib/api";
 import type { LobbyConfig, LobbyMember, LobbyVenue, AdminUser } from "../lib/types";
@@ -52,6 +52,7 @@ export function LobbySettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
   const [newVenueName, setNewVenueName] = useState("");
   
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
@@ -152,6 +153,28 @@ export function LobbySettings() {
      } catch {
         /* ignore */
      }
+  };
+
+  const canRemoveMember = useCallback((member: LobbyMember | null) => {
+    if (!member || member.tg_id === me?.tg_id) return false;
+    if (me?.is_admin) return true;
+    return member.role !== "admin" && member.role !== "super_admin";
+  }, [me?.is_admin, me?.tg_id]);
+
+  const handleRemoveMember = async (member: LobbyMember) => {
+    if (!canRemoveMember(member)) return;
+    if (!window.confirm(`Удалить ${member.name} из лобби?`)) return;
+    setRemovingMemberId(member.tg_id);
+    try {
+      await deleteLobbyMember(lobbyId, member.tg_id);
+      setMembers((prev) => prev.filter((item) => item.tg_id !== member.tg_id));
+      setSelectedMember((prev) => (prev?.tg_id === member.tg_id ? null : prev));
+      setRoleDialogOpen(false);
+    } catch (e: any) {
+      alert("Ошибка удаления участника: " + (e?.message || "unknown"));
+    } finally {
+      setRemovingMemberId(null);
+    }
   };
 
   const handleDeleteLobby = async () => {
@@ -474,6 +497,24 @@ export function LobbySettings() {
                         </button>
                      ))}
                   </div>
+                  {canRemoveMember(selectedMember) ? (
+                     <button
+                       onClick={() => handleRemoveMember(selectedMember)}
+                       disabled={removingMemberId === selectedMember.tg_id}
+                       className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-red-500/40 bg-red-500/10 p-3 text-sm font-black uppercase tracking-widest text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98] disabled:opacity-50"
+                     >
+                       {removingMemberId === selectedMember.tg_id ? (
+                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent" />
+                       ) : (
+                         <Trash2 className="h-4 w-4" />
+                       )}
+                       Удалить из лобби
+                     </button>
+                  ) : selectedMember.tg_id !== me?.tg_id ? (
+                     <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                        Админ лобби может удалять игроков и организаторов. Админов отсюда удалить нельзя.
+                     </div>
+                  ) : null}
                </div>
             )}
          </DialogContent>

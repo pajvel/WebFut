@@ -138,11 +138,11 @@ def patch_settings():
     theme = data.get("theme")
     if "theme" in data:
         if theme in (None, ""):
-            settings.theme = "real"
+            settings.theme = "juve"
         elif not isinstance(theme, str):
             return err("invalid_theme", 400)
         else:
-            settings.theme = theme.strip() or "real"
+            settings.theme = theme.strip() or "juve"
     if "mode_18plus" in data:
         settings.mode_18plus = bool(data["mode_18plus"])
     if "avatar_grayscale" in data:

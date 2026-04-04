@@ -20,6 +20,16 @@ bp = Blueprint("lobbies", __name__)
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
+def _lobby_role_rank(role: str | None) -> int:
+    role_hierarchy = {
+        LobbyRole.PLAYER.value: 0,
+        LobbyRole.ORGANIZER.value: 1,
+        LobbyRole.ADMIN.value: 2,
+        LobbyRole.SUPER_ADMIN.value: 3,
+    }
+    return role_hierarchy.get(role or "", 0)
+
+
 def _require_lobby_role(db, context_id: int, tg_id: int, min_role: LobbyRole) -> ContextMember | None:
     """Return membership if user has at least *min_role* or is global admin."""
     member = (
@@ -29,13 +39,7 @@ def _require_lobby_role(db, context_id: int, tg_id: int, min_role: LobbyRole) ->
     )
     if member is None:
         return None
-    role_hierarchy = {
-        LobbyRole.PLAYER.value: 0,
-        LobbyRole.ORGANIZER.value: 1,
-        LobbyRole.ADMIN.value: 2,
-        LobbyRole.SUPER_ADMIN.value: 3,
-    }
-    if role_hierarchy.get(member.role, 0) >= role_hierarchy.get(min_role.value, 0):
+    if _lobby_role_rank(member.role) >= _lobby_role_rank(min_role.value):
         return member
     return None
 
@@ -276,6 +280,35 @@ def add_lobby_member(context_id: int):
         role=data.get("role", LobbyRole.PLAYER.value)
     )
     db.add(member)
+    db.commit()
+    return ok()
+
+
+@bp.delete("/lobbies/<int:context_id>/members/<int:tg_id>")
+def delete_lobby_member(context_id: int, tg_id: int):
+    """Remove a member from the lobby. Lobby admins can remove players and organizers."""
+    user = require_user()
+    db = get_db()
+
+    if not is_admin(user):
+        member = _require_lobby_role(db, context_id, user.tg_id, LobbyRole.ADMIN)
+        if member is None:
+            return err("forbidden", 403)
+
+    target = (
+        db.query(ContextMember)
+        .filter_by(context_id=context_id, tg_id=tg_id)
+        .one_or_none()
+    )
+    if target is None:
+        return err("member_not_found", 404)
+    if tg_id == user.tg_id:
+        return err("cannot_remove_self", 400)
+    if not is_admin(user) and _lobby_role_rank(target.role) >= _lobby_role_rank(LobbyRole.ADMIN.value):
+        return err("cannot_remove_admin", 403)
+
+    db.delete(target)
+    db.query(User).filter_by(tg_id=tg_id, default_context_id=context_id).update({"default_context_id": None})
     db.commit()
     return ok()
 

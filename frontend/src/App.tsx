@@ -8,7 +8,13 @@ import { getMe, getSettings, patchSettings, ApiError, fetchMatches, getProfile, 
 import { AppContext } from "./lib/app-context";
 import type { Me, Settings } from "./lib/types";
 import { formatApiError } from "./lib/errors";
-import { PROFILE_THEMES, applyProfileTheme } from "./lib/profile-theme";
+import {
+  applyProfileTheme,
+  getStoredAvatarGrayscale,
+  getStoredProfileThemeId,
+  isDarkProfileTheme,
+  persistAvatarGrayscale,
+} from "./lib/profile-theme";
 
 export default function App() {
   const MIN_BOOT_MS = 3000;
@@ -121,30 +127,24 @@ export default function App() {
   }, [refreshMe]);
 
   useEffect(() => {
-    const storedThemeId = localStorage.getItem("profile_theme");
-    applyProfileTheme(storedThemeId);
+    const theme = applyProfileTheme(getStoredProfileThemeId());
+    document.documentElement.classList.toggle("dark", isDarkProfileTheme(theme.id));
+    document.documentElement.classList.toggle("avatars-grayscale", getStoredAvatarGrayscale());
   }, []);
 
   // Централизованная логика применения темы
-  const mapAndApplyTheme = useCallback((themeRaw: string) => {
-    const mappedTheme =
-      themeRaw === "light"
-        ? "real"
-        : themeRaw === "dark"
-          ? "juve"
-          : themeRaw;
-    const isKnownProfileTheme = PROFILE_THEMES.some((t) => t.id === mappedTheme);
-    if (isKnownProfileTheme) {
-      applyProfileTheme(mappedTheme);
-    }
-    document.documentElement.classList.toggle("dark", mappedTheme === "juve");
+  const mapAndApplyTheme = useCallback((themeRaw: string | null | undefined) => {
+    const theme = applyProfileTheme(themeRaw);
+    document.documentElement.classList.toggle("dark", isDarkProfileTheme(theme.id));
   }, []);
 
   useEffect(() => {
     if (settings?.theme) {
       mapAndApplyTheme(String(settings.theme));
     }
-    document.documentElement.classList.toggle("avatars-grayscale", settings?.avatar_grayscale !== false);
+    const avatarGrayscale = settings?.avatar_grayscale ?? getStoredAvatarGrayscale();
+    document.documentElement.classList.toggle("avatars-grayscale", avatarGrayscale);
+    persistAvatarGrayscale(avatarGrayscale);
   }, [settings?.theme, settings?.avatar_grayscale, mapAndApplyTheme]);
 
   const setTheme = useCallback((theme: string) => {

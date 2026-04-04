@@ -675,6 +675,12 @@ export async function patchLobbyMember(contextId: number, tgId: number, payload:
   });
 }
 
+export async function deleteLobbyMember(contextId: number, tgId: number) {
+  return apiFetch(`/lobbies/${contextId}/members/${tgId}`, {
+    method: "DELETE"
+  });
+}
+
 // ── Draft API ───────────────────────────────────────────────────────────
 
 export async function initDraft(matchId: number) {
