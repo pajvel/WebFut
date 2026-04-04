@@ -97,6 +97,7 @@ export type TeamCurrent = {
 
 export type MatchDetail = {
   match: MatchSummary;
+  config: LobbyConfig;
   members: MatchMember[];
   segments: MatchSegment[];
   events: MatchEvent[];
@@ -113,7 +114,7 @@ export type MatchDetail = {
     } | null;
     requests: { tg_id: number; status: string }[];
     statuses: { tg_id: number; status: string }[];
-  };
+  } | null;
   mvp?: {
     top_tg_id: number | null;
     votes: Record<string, number>;
@@ -192,6 +193,8 @@ export type ProfileResponse = {
 
 export type LeaderboardResponse = {
   items: LeaderboardEntry[];
+  enabled?: boolean;
+  context_id?: number | null;
 };
 
 export type ApiResponse<T> = {

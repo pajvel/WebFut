@@ -6,7 +6,7 @@ from flask import Blueprint, request
 
 from ..auth import is_admin, require_user
 from ..db import get_db
-from ..models import Match, MatchMember, PaymentInfo, PaymentRequest, PaymentStatus, User
+from ..models import ContextConfig, Match, MatchMember, PaymentInfo, PaymentRequest, PaymentStatus, User
 from ..services.rate_limit import allow as allow_rate
 from ..services.telegram_bot import (
     is_reminder_on_cooldown,
@@ -39,6 +39,20 @@ def _eligible_payment_members(db, match_id: int) -> list[MatchMember]:
     )
 
 
+def _payments_enabled(db, context_id: int) -> bool:
+    config = db.query(ContextConfig).filter_by(context_id=context_id).one_or_none()
+    return bool(config.payments_enabled) if config else False
+
+
+def _require_match_with_payments(db, match_id: int):
+    match = db.query(Match).filter_by(id=match_id).one_or_none()
+    if match is None:
+        return None, err("match_not_found", 404)
+    if not _payments_enabled(db, match.context_id):
+        return None, err("payments_disabled", 403)
+    return match, None
+
+
 def _announce_hash(info: PaymentInfo) -> str:
     payload = json.dumps(
         {
@@ -58,9 +72,9 @@ def _announce_hash(info: PaymentInfo) -> str:
 def payer_request(match_id: int):
     user = require_user()
     db = get_db()
-    match = db.query(Match).filter_by(id=match_id).one_or_none()
-    if match is None:
-        return err("match_not_found", 404)
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     req = db.query(PaymentRequest).filter_by(match_id=match_id, tg_id=user.tg_id).one_or_none()
     if req is None:
         db.add(PaymentRequest(match_id=match_id, tg_id=user.tg_id, status="pending"))
@@ -74,6 +88,9 @@ def payer_request(match_id: int):
 def payer_offer(match_id: int):
     user = require_user()
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     if not (is_admin(user) or _require_organizer(db, match_id, user.tg_id)):
         return err("forbidden", 403)
     info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
@@ -99,6 +116,9 @@ def payer_offer(match_id: int):
 def payer_respond(match_id: int):
     user = require_user()
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     data = request.get_json(silent=True) or {}
     accepted = bool(data.get("accepted", False))
     req = db.query(PaymentRequest).filter_by(match_id=match_id, tg_id=user.tg_id).one_or_none()
@@ -121,6 +141,9 @@ def payer_respond(match_id: int):
 def payer_select(match_id: int):
     user = require_user()
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     if not (is_admin(user) or _require_organizer(db, match_id, user.tg_id)):
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
@@ -152,6 +175,9 @@ def payer_select(match_id: int):
 def payer_clear(match_id: int):
     user = require_user()
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
     if info is None:
         return err("payer_not_set", 400)
@@ -180,6 +206,9 @@ def payer_details(match_id: int):
     if not allow_rate(f"payer_details:{match_id}:{user.tg_id}", 3):
         return err("too_many_requests", 429)
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     info = (
         db.query(PaymentInfo)
         .filter_by(match_id=match_id)
@@ -228,6 +257,9 @@ def mark_paid(match_id: int):
     if not allow_rate(f"mark_paid:{match_id}:{user.tg_id}", 3):
         return err("too_many_requests", 429)
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     status = (
         db.query(PaymentStatus)
         .filter_by(match_id=match_id, tg_id=user.tg_id)
@@ -266,6 +298,9 @@ def confirm_payment(match_id: int):
     if not allow_rate(f"confirm_payment:{match_id}:{user.tg_id}", 2):
         return err("too_many_requests", 429)
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
     if info is None or info.payer_tg_id != user.tg_id:
         return err("forbidden", 403)
@@ -290,6 +325,9 @@ def remind_payment(match_id: int):
     if not allow_rate(f"remind_payment:{match_id}:{user.tg_id}", 3):
         return err("too_many_requests", 429)
     db = get_db()
+    _, error_response = _require_match_with_payments(db, match_id)
+    if error_response is not None:
+        return error_response
     info = (
         db.query(PaymentInfo)
         .filter_by(match_id=match_id)

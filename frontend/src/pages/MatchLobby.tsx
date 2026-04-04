@@ -184,6 +184,11 @@ export function MatchLobby() {
     };
   }, [matchId, navigate]);
 
+  useEffect(() => {
+    if (data?.config.payments_enabled) return;
+    setShowPayerModal(false);
+  }, [data?.config.payments_enabled]);
+
   const myRole = useMemo(() => {
     if (!data) return null;
     return data.members.find((m) => m.tg_id === data.me.tg_id)?.role ?? null;
@@ -194,6 +199,7 @@ export function MatchLobby() {
   );
 
   const isOrganizer = !!(data && (data.me.is_admin || myMember?.role === "organizer"));
+  const paymentsEnabled = !!data?.config.payments_enabled;
   const canPayerAction = isOrganizer;
   const payerInfo = data?.payments?.payer || null;
   const hasPayer = !!(payerInfo && payerInfo.payer_tg_id);
@@ -410,7 +416,7 @@ export function MatchLobby() {
           </div>
         ) : null}
 
-        {isParticipant ? (
+        {paymentsEnabled && isParticipant ? (
           <div className="bg-[var(--bg-surface)] p-5 border-2 border-[var(--border-main)] rounded-[2.5rem] shadow-brutal">
             <div className="flex items-center justify-between mb-4">
               <div className="flex flex-col">
@@ -576,7 +582,7 @@ export function MatchLobby() {
         </div>
       ) : null}
 
-      {showPayerModal ? (
+      {paymentsEnabled && showPayerModal ? (
         <div className="fixed inset-0 z-[110] flex flex-col bg-[var(--bg-page)]">
           <div className="flex-none p-4 bg-[var(--bg-surface)] border-b-4 border-[var(--border-main)]">
             <div className="flex items-center justify-between">
@@ -670,7 +676,7 @@ export function MatchLobby() {
         </div>
       ) : null}
 
-      {offerForMe && !hasPayer ? (
+      {paymentsEnabled && offerForMe && !hasPayer ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95 backdrop-blur-sm">
           <div className="w-full bg-[var(--bg-surface)] border-4 border-[var(--border-main)] p-6 rounded-[2.5rem] shadow-[12px_12px_0px_0px_var(--border-main)]">
             <h2 className="font-black italic uppercase text-2xl mb-6 leading-none text-[var(--text-main)]">ПРЕДЛОЖЕНИЕ ПЛАТЕЛЬЩИКА</h2>

@@ -217,6 +217,12 @@ export function FinishedMatch() {
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (data?.config.payments_enabled) return;
+    setReportOpen(false);
+    setPayerSelectOpen(false);
+  }, [data?.config.payments_enabled]);
+
   const score = useMemo(() => {
     if (!data) return { A: 0, B: 0 };
     const lastSegment = [...data.segments].reverse().find((seg) => seg.ended_at) || data.segments[data.segments.length - 1];
@@ -262,6 +268,7 @@ export function FinishedMatch() {
 
   const isAdmin = !!data?.me.is_admin;
   const isOrganizer = myMember?.role === "organizer";
+  const paymentsEnabled = !!data?.config.payments_enabled;
   const payerInfo = data?.payments?.payer || null;
   const isPayer = !!(payerInfo && payerInfo.payer_tg_id === data?.me.tg_id);
 
@@ -535,6 +542,7 @@ export function FinishedMatch() {
             myTeamKey={myTeamKey}
             onRequestSelectPayer={() => setPayerSelectOpen(true)}
             onRequestConfirmPayments={() => setReportOpen(true)}
+            paymentsEnabled={paymentsEnabled}
             isPlayer={isPlayer}
             isPayer={isPayer}
             isAdmin={isAdmin}
@@ -587,7 +595,7 @@ export function FinishedMatch() {
         )}
       </main>
 
-      {reportOpen && (
+      {paymentsEnabled && reportOpen && (
         <PaymentReportOverlay
           players={matchUi.teamA.concat(matchUi.teamB).filter((p) => p.tg_id !== payerInfo?.payer_tg_id)}
           statuses={paymentStatuses}
@@ -610,7 +618,7 @@ export function FinishedMatch() {
         />
       )}
 
-      {payerSelectOpen && (
+      {paymentsEnabled && payerSelectOpen && (
         <PayerSelectOverlay
           players={matchUi.teamA.concat(matchUi.teamB)}
           onClose={() => setPayerSelectOpen(false)}
@@ -669,6 +677,7 @@ const ResultTab = ({
   myTeamKey,
   onRequestSelectPayer,
   onRequestConfirmPayments,
+  paymentsEnabled,
   isPlayer,
   isPayer,
   isAdmin,
@@ -693,6 +702,7 @@ const ResultTab = ({
   myTeamKey: "A" | "B";
   onRequestSelectPayer: () => void;
   onRequestConfirmPayments: () => void;
+  paymentsEnabled: boolean;
   isPlayer: boolean;
   isPayer: boolean;
   isAdmin: boolean;
@@ -831,7 +841,7 @@ const ResultTab = ({
         </div>
       </section>
 
-            {isPlayer || isAdmin ? (
+      {paymentsEnabled && (isPlayer || isAdmin) ? (
         <section className="bg-[var(--bg-surface)] border-2 border-[var(--border-main)] p-4 brutal-shadow space-y-4 rounded-[32px] transition-colors">
           <h2 className="text-base font-black italic uppercase leading-none text-[var(--text-main)]">ПЛАТЕЖИ</h2>
           <div className="bg-[var(--bg-page)]/50 p-3 border-2 border-[var(--border-main)] rounded-2xl relative">

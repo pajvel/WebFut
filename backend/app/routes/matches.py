@@ -8,6 +8,7 @@ from ..config import Config
 from ..db import get_db
 from ..models import (
     Context,
+    ContextConfig,
     ContextMember,
     Event,
     Feedback,
@@ -21,6 +22,7 @@ from ..models import (
     TeamCurrent,
     TeamVariant,
     User,
+    Venue,
 )
 from ..services.interaction_log import log_interaction_diffs
 from ..services.match import build_feedback, build_team_model_match, ensure_active_segment, finish_segment
@@ -58,6 +60,40 @@ def _parse_scheduled_at_msk(raw_value: str) -> datetime:
         return parsed.astimezone(_MSK_TZ)
     # Assume naive input is already Moscow time, attach timezone
     return parsed.replace(tzinfo=_MSK_TZ)
+
+
+def _context_config_payload(config: ContextConfig | None) -> dict:
+    return {
+        "payments_enabled": bool(config.payments_enabled) if config else False,
+        "leaderboard_enabled": bool(config.leaderboard_enabled) if config else True,
+        "butt_game_allowed": bool(config.butt_game_allowed) if config else False,
+        "max_team_size": int(config.max_team_size) if config and config.max_team_size else 5,
+    }
+
+
+def _get_context_config(db, context_id: int) -> dict:
+    config = db.query(ContextConfig).filter_by(context_id=context_id).one_or_none()
+    return _context_config_payload(config)
+
+
+def _resolve_context_venue(db, context_id: int, raw_venue: str | None, venue_id: int | None = None) -> Venue | None:
+    if venue_id is not None:
+        venue = db.query(Venue).filter_by(id=venue_id, context_id=context_id).one_or_none()
+        if venue is not None:
+            return venue
+    normalized = (_normalize_venue(raw_venue) or "").strip()
+    if not normalized:
+        return None
+    candidates = {normalized}
+    displayed = _display_venue(normalized)
+    if displayed:
+        candidates.add(displayed.strip())
+    return (
+        db.query(Venue)
+        .filter(Venue.context_id == context_id, Venue.name.in_(list(candidates)))
+        .order_by(Venue.id.asc())
+        .first()
+    )
 
 
 def _require_member(db, match_id: int, tg_id: int) -> MatchMember | None:
@@ -278,7 +314,6 @@ def create_match():
     db = get_db()
     context_id = _resolve_user_context_id(db, user, raw_context_id)
     venue = data.get("venue")
-    venue = _normalize_venue(venue)
     if not context_id or not venue:
         return err("missing_context_or_venue", 400)
     if not _has_context_access(db, context_id, user):
@@ -295,11 +330,15 @@ def create_match():
             scheduled_at = _parse_scheduled_at_msk(raw_scheduled)
         except ValueError:
             return err("invalid_scheduled_at", 400)
+    venue_row = _resolve_context_venue(db, context_id, venue)
+    if venue_row is None:
+        return err("invalid_context_venue", 400)
     match = Match(
         context_id=context_id,
         created_by=user.tg_id,
         scheduled_at=scheduled_at,
-        venue=venue,
+        venue=venue_row.name,
+        venue_id=venue_row.id,
         status="created",
     )
     db.add(match)
@@ -383,7 +422,9 @@ def finish_match(match_id: int):
     if not (is_admin(user) or (member and member.can_edit) or _require_admin_or_organizer(db, match, user)):
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
-    finish_segment(db, match_id, is_butt_game=bool(data.get("is_butt_game", False)))
+    config = _get_context_config(db, match.context_id)
+    is_butt_game = bool(data.get("is_butt_game", False)) and bool(config["butt_game_allowed"])
+    finish_segment(db, match_id, is_butt_game=is_butt_game)
     match.status = "finished"
     match.finished_at = datetime.utcnow()
 
@@ -455,7 +496,9 @@ def new_segment(match_id: int):
     if not (is_admin(user) or (member and member.role in ("player", "organizer")) or _can_edit(db, match_id, user.tg_id)):
         return err("forbidden", 403)
     data = request.get_json(silent=True) or {}
-    finish_segment(db, match_id, is_butt_game=bool(data.get("is_butt_game", False)))
+    config = _get_context_config(db, match.context_id)
+    is_butt_game = bool(data.get("is_butt_game", False)) and bool(config["butt_game_allowed"])
+    finish_segment(db, match_id, is_butt_game=is_butt_game)
     segment = ensure_active_segment(db, match_id)
     return ok({"segment_id": segment.id, "seg_no": segment.seg_no})
 
@@ -556,13 +599,17 @@ def repeat_match(match_id: int):
     participant_ids = {m.tg_id for m in members}
     if not participant_ids:
         return err("no_participants", 400)
+    venue_row = _resolve_context_venue(db, match.context_id, match.venue, match.venue_id)
+    if venue_row is None:
+        return err("invalid_context_venue", 400)
 
     try:
         new_match = Match(
             context_id=match.context_id,
             created_by=user.tg_id,
             scheduled_at=None,
-            venue=match.venue,
+            venue=venue_row.name,
+            venue_id=venue_row.id,
             status="created",
         )
         db.add(new_match)
@@ -652,9 +699,10 @@ def get_match(match_id: int):
         .all()
     )
     team_current = db.query(TeamCurrent).filter_by(match_id=match_id).one_or_none()
-    payer_info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none()
-    payer_requests = db.query(PaymentRequest).filter_by(match_id=match_id).all()
-    payment_statuses = db.query(PaymentStatus).filter_by(match_id=match_id).all()
+    config = _get_context_config(db, match.context_id)
+    payer_info = db.query(PaymentInfo).filter_by(match_id=match_id).one_or_none() if config["payments_enabled"] else None
+    payer_requests = db.query(PaymentRequest).filter_by(match_id=match_id).all() if config["payments_enabled"] else []
+    payment_statuses = db.query(PaymentStatus).filter_by(match_id=match_id).all() if config["payments_enabled"] else []
     mvp_votes = (
         db.query(Feedback.mvp_vote_tg_id)
         .filter(Feedback.match_id == match_id, Feedback.mvp_vote_tg_id.is_not(None))
@@ -738,6 +786,7 @@ def get_match(match_id: int):
                 "created_at": match.created_at.isoformat(),
                 "finished_at": match.finished_at.isoformat() if match.finished_at else None,
             },
+            "config": config,
             "members": [
                 {
                     "tg_id": member.tg_id,

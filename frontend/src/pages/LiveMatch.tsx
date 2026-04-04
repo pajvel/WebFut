@@ -90,6 +90,11 @@ export function LiveMatch() {
     }
   }, [data, matchId, navigate]);
 
+  useEffect(() => {
+    if (data?.config.butt_game_allowed) return;
+    setButtMode(false);
+  }, [data?.config.butt_game_allowed]);
+
   const score = useMemo(() => {
     if (!data) return { A: 0, B: 0 };
     const active = [...data.segments].reverse().find((seg) => !seg.ended_at);
@@ -205,6 +210,7 @@ export function LiveMatch() {
     data &&
     (data.me.is_admin || myMember?.role === "organizer" || myMember?.can_edit)
   );
+  const buttGameAllowed = !!data?.config.butt_game_allowed;
 
   const teamMembers = (team: "A" | "B") => {
     if (!data) return [];
@@ -287,24 +293,26 @@ export function LiveMatch() {
         <div className="flex gap-2">
           <button
             onClick={() => setSpectatorsOpen(true)}
-            className="w-12 py-1.5 rounded-lg border-2 border-[var(--border-main)] bg-[var(--bg-surface)] text-[var(--text-main)] flex items-center justify-center active:scale-95 transition-transform"
+            className={`${buttGameAllowed ? "w-12" : "flex-1"} py-1.5 rounded-lg border-2 border-[var(--border-main)] bg-[var(--bg-surface)] text-[var(--text-main)] flex items-center justify-center active:scale-95 transition-transform`}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
-          <button
-            onClick={() => setButtMode((prev) => !prev)}
-            className="flex-1 py-1.5 rounded-lg border-2 border-[var(--border-main)] font-black text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
-            style={{
-              backgroundColor: buttMode ? "var(--bg-contrast)" : "var(--bg-surface)",
-              color: buttMode ? "var(--text-contrast)" : "var(--text-main)"
-            }}
-          >
-            <div className={`w-1.5 h-1.5 rounded-full ${buttMode ? "bg-green-400" : "bg-neutral-300"}`} />
-            MODE: {buttMode ? "НА ЖОПУ ON" : "НА ЖОПУ OFF"}
-          </button>
+          {buttGameAllowed ? (
+            <button
+              onClick={() => setButtMode((prev) => !prev)}
+              className="flex-1 py-1.5 rounded-lg border-2 border-[var(--border-main)] font-black text-[9px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: buttMode ? "var(--bg-contrast)" : "var(--bg-surface)",
+                color: buttMode ? "var(--text-contrast)" : "var(--text-main)"
+              }}
+            >
+              <div className={`w-1.5 h-1.5 rounded-full ${buttMode ? "bg-green-400" : "bg-neutral-300"}`} />
+              MODE: {buttMode ? "НА ЖОПУ ON" : "НА ЖОПУ OFF"}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -708,9 +716,9 @@ export function LiveMatch() {
                   if (!matchId) return;
                   try {
                     if (confirmAction.type === "finish") {
-                      await finishMatch(Number(matchId), buttMode);
+                      await finishMatch(Number(matchId), buttGameAllowed && buttMode);
                     } else if (confirmAction.type === "new_segment") {
-                      await newSegment(Number(matchId), buttMode);
+                      await newSegment(Number(matchId), buttGameAllowed && buttMode);
                       load();
                     } else if (confirmAction.type === "delete_segment") {
                       await deleteSegment(Number(matchId), confirmAction.segmentId);

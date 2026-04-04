@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, LayoutGrid } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { createMatch, fetchMatches } from "../lib/api";
+import { createMatch, fetchMatches, fetchLobbies, getLobbyVenues } from "../lib/api";
 import type { MatchSummary } from "../lib/types";
 import { Sheet, SheetClose, SheetContent } from "../components/ui/sheet";
 import { MatchCard } from "../components/MatchCard";
@@ -15,6 +15,11 @@ const venueOptions = [
   { value: "зал2", label: "Маракана" }
 ];
 
+type LobbyVenueOption = {
+  value: string;
+  label: string;
+};
+
 export function MatchesFeed() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -26,7 +31,10 @@ export function MatchesFeed() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [venue, setVenue] = useState(venueOptions[0].value);
+  const [effectiveLobbyId, setEffectiveLobbyId] = useState<number | null>(null);
+  const [lobbyVenueOptions, setLobbyVenueOptions] = useState<LobbyVenueOption[]>([]);
+  const [venuesLoading, setVenuesLoading] = useState(false);
+  const [venue, setVenue] = useState(venueOptions[0]?.value ?? "");
   const [scheduledDate, setScheduledDate] = useState(() => {
     return nowMskParts().date;
   });
@@ -39,6 +47,51 @@ export function MatchesFeed() {
     const parsed = Number(raw);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }, [searchParams]);
+
+  useEffect(() => {
+    let alive = true;
+
+    const loadVenueOptions = async () => {
+      setVenuesLoading(true);
+      try {
+        let contextId = activeLobbyId;
+        if (!contextId) {
+          const lobbyData = await fetchLobbies();
+          contextId = lobbyData?.default_context_id ?? lobbyData?.lobbies?.[0]?.id ?? null;
+        }
+        if (!alive) return;
+        setEffectiveLobbyId(contextId);
+        if (!contextId) {
+          setLobbyVenueOptions([]);
+          setVenue("");
+          return;
+        }
+        const data = await getLobbyVenues(contextId);
+        if (!alive) return;
+        const options = (data?.venues || []).map((item) => ({
+          value: item.name,
+          label: item.name
+        }));
+        setLobbyVenueOptions(options);
+        setVenue((prev) => (options.some((option) => option.value === prev) ? prev : options[0]?.value ?? ""));
+      } catch (err) {
+        if (alive) {
+          setLobbyVenueOptions([]);
+          setVenue("");
+          setError(formatApiError(err));
+        }
+      } finally {
+        if (alive) {
+          setVenuesLoading(false);
+        }
+      }
+    };
+
+    loadVenueOptions();
+    return () => {
+      alive = false;
+    };
+  }, [activeLobbyId]);
 
   useEffect(() => {
     let alive = true;
@@ -117,11 +170,11 @@ export function MatchesFeed() {
       const nextTime = scheduledTime.trim() || "00:00";
       const scheduledAt = nextDate ? toMskIsoString(nextDate, nextTime) : null;
       await createMatch({
-        context_id: activeLobbyId ?? undefined,
+        context_id: activeLobbyId ?? effectiveLobbyId ?? undefined,
         venue,
         scheduled_at: scheduledAt
       });
-      const data = await fetchMatches({ limit: 30, offset: 0, context_id: activeLobbyId ?? undefined });
+      const data = await fetchMatches({ limit: 30, offset: 0, context_id: activeLobbyId ?? effectiveLobbyId ?? undefined });
       setMatches(data?.matches || []);
       setHasMore(Boolean(data?.paging?.has_more));
       setNextOffset(data?.paging?.next_offset ?? null);
@@ -246,29 +299,39 @@ export function MatchesFeed() {
             >
               <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">{t("Выбор зала")}</div>
               <div className="mt-3 flex flex-col gap-2">
-                {venueOptions.map((option) => {
-                  const active = venue === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setVenue(option.value)}
-                      className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 transition-transform active:scale-[0.99] ${
-                        active ? "bg-[var(--bg-contrast)] text-[color:var(--text-contrast)]" : "bg-[var(--bg-page)]"
-                      }`}
-                      style={{ borderColor: "var(--border-main)", color: active ? undefined : "var(--text-main)" }}
-                    >
-                      <span className="text-sm font-black uppercase tracking-widest">{option.label}</span>
-                      {active ? (
-                        <div className="h-6 w-6 rounded-lg bg-[var(--bg-page)] flex items-center justify-center">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        </div>
-                      ) : null}
-                    </button>
-                  );
-                })}
+                {venuesLoading ? (
+                  <div className="text-xs font-bold uppercase tracking-widest opacity-50">
+                    Загрузка площадок...
+                  </div>
+                ) : lobbyVenueOptions.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed px-4 py-3 text-xs font-bold uppercase tracking-widest opacity-60">
+                    Нет площадок. Добавьте их в настройках лобби.
+                  </div>
+                ) : (
+                  lobbyVenueOptions.map((option) => {
+                    const active = venue === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setVenue(option.value)}
+                        className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 transition-transform active:scale-[0.99] ${
+                          active ? "bg-[var(--bg-contrast)] text-[color:var(--text-contrast)]" : "bg-[var(--bg-page)]"
+                        }`}
+                        style={{ borderColor: "var(--border-main)", color: active ? undefined : "var(--text-main)" }}
+                      >
+                        <span className="text-sm font-black uppercase tracking-widest">{option.label}</span>
+                        {active ? (
+                          <div className="h-6 w-6 rounded-lg bg-[var(--bg-page)] flex items-center justify-center">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -307,8 +370,13 @@ export function MatchesFeed() {
               </SheetClose>
               <button
                 onClick={handleCreate}
+                disabled={venuesLoading || lobbyVenueOptions.length === 0}
                 className="h-10 rounded-xl font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform"
-                style={{ background: "var(--bg-contrast)", color: "var(--text-contrast)" }}
+                style={{
+                  background: venuesLoading || lobbyVenueOptions.length === 0 ? "var(--bg-surface)" : "var(--bg-contrast)",
+                  color: venuesLoading || lobbyVenueOptions.length === 0 ? "var(--text-main)" : "var(--text-contrast)",
+                  opacity: venuesLoading || lobbyVenueOptions.length === 0 ? 0.5 : 1
+                }}
               >
                 {t("Создать матч")}
               </button>

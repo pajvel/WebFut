@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { getLeaderboard, getProfile, patchMe, patchSettings, uploadAvatar } from "../lib/api";
+import { fetchLobbies, getLeaderboard, getProfile, patchMe, patchSettings, uploadAvatar } from "../lib/api";
 import type { LeaderboardEntry, MatchParticipant, ProfileHistoryItem, ProfileRating, ProfileStats } from "../lib/types";
 import { useAppContext } from "../lib/app-context";
 import { Input } from "../components/ui/input";
@@ -127,6 +127,7 @@ export function Profile() {
   );
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardItems, setLeaderboardItems] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardEnabled, setLeaderboardEnabled] = useState(true);
   const [draftName, setDraftName] = useState("");
   const [draftFile, setDraftFile] = useState<File | null>(null);
   const [resetToTelegramAvatar, setResetToTelegramAvatar] = useState(false);
@@ -153,8 +154,8 @@ export function Profile() {
         localStorage.removeItem(PROFILE_CACHE_KEY);
       }
     }
-    Promise.allSettled([getProfile()]).then((results) => {
-      const [profileResult] = results;
+    Promise.allSettled([getProfile(), fetchLobbies()]).then((results) => {
+      const [profileResult, lobbiesResult] = results;
       if (profileResult.status === "fulfilled") {
         setStats(profileResult.value?.stats || emptyStats);
         setRating(profileResult.value?.rating || null);
@@ -169,6 +170,13 @@ export function Profile() {
         );
       } else {
         setError(formatApiError(profileResult.reason));
+      }
+      if (lobbiesResult.status === "fulfilled") {
+        const defaultLobby =
+          lobbiesResult.value?.lobbies?.find((item) => item.id === lobbiesResult.value?.default_context_id) ||
+          lobbiesResult.value?.lobbies?.[0] ||
+          null;
+        setLeaderboardEnabled(defaultLobby?.config?.leaderboard_enabled ?? true);
       }
     });
   }, []);
@@ -200,6 +208,10 @@ export function Profile() {
 
   const handleLeaderboardOpenChange = (open: boolean) => {
     if (open) {
+      if (!leaderboardEnabled) {
+        setError("Лидерборд отключен для текущего лобби");
+        return;
+      }
       setSearchParams({ view: "rank" }, { replace: true });
     } else {
       setSearchParams({}, { replace: true });
@@ -207,7 +219,11 @@ export function Profile() {
     if (!open) return;
     setLeaderboardLoading(true);
     getLeaderboard()
-      .then((data) => setLeaderboardItems(data?.items || []))
+      .then((data) => {
+        const enabled = data?.enabled ?? true;
+        setLeaderboardEnabled(enabled);
+        setLeaderboardItems(enabled ? data?.items || [] : []);
+      })
       .catch((err) => setError(formatApiError(err)))
       .finally(() => setLeaderboardLoading(false));
   };
@@ -301,6 +317,8 @@ export function Profile() {
           </div>
           {leaderboardLoading ? (
             <div className="text-sm text-zinc-500">Loading...</div>
+          ) : !leaderboardEnabled ? (
+            <div className="text-sm text-zinc-500">Leaderboard disabled for this lobby</div>
           ) : leaderboardItems.length === 0 ? (
             <div className="text-sm text-zinc-500">No data</div>
           ) : (
@@ -524,8 +542,9 @@ export function Profile() {
             </button>
             <button
               onClick={() => handleLeaderboardOpenChange(true)}
-              className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-[var(--border-main)] bg-[var(--bg-surface)] text-[color:var(--text-main)] font-black uppercase tracking-tight"
+              className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-[var(--border-main)] bg-[var(--bg-surface)] text-[color:var(--text-main)] font-black uppercase tracking-tight disabled:opacity-40"
               type="button"
+              disabled={!leaderboardEnabled}
             >
               <Trophy className="h-5 w-5" strokeWidth={3} />
               <span>Rank</span>

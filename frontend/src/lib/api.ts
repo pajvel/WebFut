@@ -644,6 +644,12 @@ export async function getLobbySettings(contextId: number) {
   }>(`/lobbies/${contextId}/settings`);
 }
 
+export async function getLobbyVenues(contextId: number) {
+  return apiFetch<{
+    venues: import("./types").LobbyVenue[];
+  }>(`/lobbies/${contextId}/venues`);
+}
+
 export async function patchLobbySettings(contextId: number, payload: Partial<import("./types").LobbyConfig> & { title?: string; password?: string }) {
   return apiFetch(`/lobbies/${contextId}/settings`, {
     method: "PATCH",

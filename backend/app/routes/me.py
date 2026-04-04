@@ -8,6 +8,8 @@ from ..auth import is_admin, require_user
 from ..config import Config
 from ..db import get_db
 from ..models import (
+    ContextConfig,
+    ContextMember,
     Event,
     Feedback,
     Match,
@@ -45,6 +47,37 @@ def _safe_avatar(custom_avatar: str | None, tg_avatar: str | None) -> str | None
             return custom_avatar
         return tg_avatar
     return custom_avatar
+
+
+def _leaderboard_enabled(config: ContextConfig | None) -> bool:
+    return bool(config.leaderboard_enabled) if config else True
+
+
+def _has_context_access(db, context_id: int, user) -> bool:
+    if is_admin(user):
+        return True
+    return (
+        db.query(ContextMember)
+        .filter_by(context_id=context_id, tg_id=user.tg_id)
+        .one_or_none()
+        is not None
+    )
+
+
+def _resolve_user_context_id(db, user, requested_context_id: int | None) -> int | None:
+    if requested_context_id is not None:
+        return requested_context_id if _has_context_access(db, requested_context_id, user) else None
+    if user.default_context_id and _has_context_access(db, int(user.default_context_id), user):
+        return int(user.default_context_id)
+    fallback_member = (
+        db.query(ContextMember.context_id)
+        .filter_by(tg_id=user.tg_id)
+        .order_by(ContextMember.joined_at.asc())
+        .first()
+    )
+    if fallback_member:
+        return int(fallback_member[0])
+    return Config.DEFAULT_CONTEXT_ID if is_admin(user) else None
 
 
 @bp.get("/me")
@@ -394,12 +427,27 @@ def _build_profile(target_tg_id: int):
 
 @bp.get("/me/leaderboard")
 def get_leaderboard():
-    require_user()
+    user = require_user()
     db = get_db()
-    state = load_state(db, 1)
+    requested_context_id = request.args.get("context_id", type=int)
+    context_id = _resolve_user_context_id(db, user, requested_context_id)
+    if requested_context_id is not None and context_id is None:
+        return err("forbidden", 403)
+    if context_id is None:
+        return ok({"items": [], "enabled": False, "context_id": None})
+
+    config = db.query(ContextConfig).filter_by(context_id=context_id).one_or_none()
+    if not _leaderboard_enabled(config):
+        return ok({"items": [], "enabled": False, "context_id": context_id})
+
+    state = load_state(db, context_id)
     base_ratings = getattr(state, "base_ratings", {}) or {}
 
-    finished_matches = db.query(Match).filter(Match.status == "finished").all()
+    finished_matches = (
+        db.query(Match)
+        .filter(Match.status == "finished", Match.context_id == context_id)
+        .all()
+    )
     stats: dict[str, dict[str, int]] = {}
     for match in finished_matches:
         current = db.query(TeamCurrent).filter_by(match_id=match.id).one_or_none()
@@ -442,7 +490,13 @@ def get_leaderboard():
                 entry["losses"] += 1
 
     rating_by_player: dict[str, RatingLog] = {}
-    for row in db.query(RatingLog).order_by(RatingLog.created_at.desc()).all():
+    for row in (
+        db.query(RatingLog)
+        .join(Match, RatingLog.match_id == Match.id)
+        .filter(Match.context_id == context_id)
+        .order_by(RatingLog.created_at.desc())
+        .all()
+    ):
         if row.player_id not in rating_by_player:
             rating_by_player[row.player_id] = row
 
@@ -484,4 +538,4 @@ def get_leaderboard():
         )
 
     entries.sort(key=lambda item: (item["rating"], item["games"]), reverse=True)
-    return ok({"items": entries})
+    return ok({"items": entries, "enabled": True, "context_id": context_id})

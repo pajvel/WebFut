@@ -369,6 +369,24 @@ def get_lobby_settings(context_id: int):
     })
 
 
+@bp.get("/lobbies/<int:context_id>/venues")
+def get_lobby_venues(context_id: int):
+    """List lobby venues for any lobby member."""
+    user = require_user()
+    db = get_db()
+    if not is_admin(user):
+        member = _require_lobby_role(db, context_id, user.tg_id, LobbyRole.PLAYER)
+        if member is None:
+            return err("forbidden", 403)
+    venues = db.query(Venue).filter_by(context_id=context_id).order_by(Venue.name.asc()).all()
+    return ok({
+        "venues": [
+            {"id": venue.id, "name": venue.name, "address": venue.address}
+            for venue in venues
+        ]
+    })
+
+
 @bp.patch("/lobbies/<int:context_id>/settings")
 def patch_lobby_settings(context_id: int):
     """Update lobby config toggles. Requires admin or super_admin."""
