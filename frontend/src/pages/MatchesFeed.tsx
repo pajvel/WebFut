@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, LayoutGrid } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createMatch, fetchMatches } from "../lib/api";
 import type { MatchSummary } from "../lib/types";
 import { Sheet, SheetClose, SheetContent } from "../components/ui/sheet";
@@ -17,6 +17,7 @@ const venueOptions = [
 
 export function MatchesFeed() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const t = useMatText();
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,12 @@ export function MatchesFeed() {
   const [scheduledTime, setScheduledTime] = useState(() => {
     return nowMskParts().time;
   });
+  const activeLobbyId = useMemo(() => {
+    const raw = searchParams.get("lobby");
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
 
   useEffect(() => {
     let alive = true;
@@ -39,7 +46,7 @@ export function MatchesFeed() {
     const loadMatches = async (opts?: { append?: boolean; offset?: number }) => {
       try {
         const offset = opts?.offset ?? 0;
-        const data = await fetchMatches({ limit: 30, offset });
+        const data = await fetchMatches({ limit: 30, offset, context_id: activeLobbyId ?? undefined });
         if (alive) {
           const items = data?.matches || [];
           setMatches((prev) => {
@@ -80,7 +87,7 @@ export function MatchesFeed() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [activeLobbyId]);
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -110,10 +117,11 @@ export function MatchesFeed() {
       const nextTime = scheduledTime.trim() || "00:00";
       const scheduledAt = nextDate ? toMskIsoString(nextDate, nextTime) : null;
       await createMatch({
+        context_id: activeLobbyId ?? undefined,
         venue,
         scheduled_at: scheduledAt
       });
-      const data = await fetchMatches({ limit: 30, offset: 0 });
+      const data = await fetchMatches({ limit: 30, offset: 0, context_id: activeLobbyId ?? undefined });
       setMatches(data?.matches || []);
       setHasMore(Boolean(data?.paging?.has_more));
       setNextOffset(data?.paging?.next_offset ?? null);
@@ -188,7 +196,7 @@ export function MatchesFeed() {
                 if (nextOffset === null) return;
                 setLoadingMore(true);
                 try {
-                  const data = await fetchMatches({ limit: 30, offset: nextOffset });
+                  const data = await fetchMatches({ limit: 30, offset: nextOffset, context_id: activeLobbyId ?? undefined });
                   const items = data?.matches || [];
                   setMatches((prev) => {
                     const seen = new Set(prev.map((m) => m.id));

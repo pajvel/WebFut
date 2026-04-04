@@ -8,6 +8,7 @@ from ..config import Config
 from ..db import get_db
 from ..models import (
     Context,
+    ContextMember,
     Event,
     Feedback,
     Match,
@@ -63,6 +64,33 @@ def _require_member(db, match_id: int, tg_id: int) -> MatchMember | None:
     return db.query(MatchMember).filter_by(match_id=match_id, tg_id=tg_id).one_or_none()
 
 
+def _has_context_access(db, context_id: int, user) -> bool:
+    if is_admin(user):
+        return True
+    return (
+        db.query(ContextMember)
+        .filter_by(context_id=context_id, tg_id=user.tg_id)
+        .one_or_none()
+        is not None
+    )
+
+
+def _resolve_user_context_id(db, user, requested_context_id: int | None) -> int | None:
+    if requested_context_id is not None:
+        return requested_context_id if _has_context_access(db, requested_context_id, user) else None
+    if user.default_context_id and _has_context_access(db, int(user.default_context_id), user):
+        return int(user.default_context_id)
+    fallback_member = (
+        db.query(ContextMember.context_id)
+        .filter_by(tg_id=user.tg_id)
+        .order_by(ContextMember.joined_at.asc())
+        .first()
+    )
+    if fallback_member:
+        return int(fallback_member[0])
+    return Config.DEFAULT_CONTEXT_ID if is_admin(user) else None
+
+
 def _require_admin_or_organizer(db, match: Match, user) -> bool:
     if is_admin(user):
         return True
@@ -93,13 +121,32 @@ def _why_text(base_eval: dict, alt_eval: dict) -> str:
 @bp.get("/")
 def list_matches():
     user = require_user()
-    context_id = request.args.get("context_id", type=int)
     limit = min(max(request.args.get("limit", type=int) or 50, 1), 100)
     offset = max(request.args.get("offset", type=int) or 0, 0)
     db = get_db()
+    requested_context_id = request.args.get("context_id", type=int)
+    effective_context_id = (
+        None
+        if is_admin(user) and requested_context_id is None
+        else _resolve_user_context_id(db, user, requested_context_id)
+    )
+    if requested_context_id is not None and effective_context_id is None:
+        return err("forbidden", 403)
+    if not is_admin(user) and effective_context_id is None:
+        return ok(
+            {
+                "matches": [],
+                "paging": {
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": False,
+                    "next_offset": None,
+                },
+            }
+        )
     query = db.query(Match)
-    if context_id:
-        query = query.filter_by(context_id=context_id)
+    if effective_context_id is not None:
+        query = query.filter_by(context_id=effective_context_id)
     rows = (
         query.order_by(Match.created_at.desc())
         .offset(offset)
@@ -222,12 +269,20 @@ def list_matches():
 def create_match():
     user = require_user()
     data = request.get_json(silent=True) or {}
-    context_id = data.get("context_id") or Config.DEFAULT_CONTEXT_ID
+    raw_context_id = data.get("context_id")
+    if raw_context_id is not None:
+        try:
+            raw_context_id = int(raw_context_id)
+        except (TypeError, ValueError):
+            return err("invalid_context_id", 400)
+    db = get_db()
+    context_id = _resolve_user_context_id(db, user, raw_context_id)
     venue = data.get("venue")
     venue = _normalize_venue(venue)
     if not context_id or not venue:
         return err("missing_context_or_venue", 400)
-    db = get_db()
+    if not _has_context_access(db, context_id, user):
+        return err("forbidden", 403)
     context = db.query(Context).filter_by(id=context_id).one_or_none()
     if context is None:
         context = Context(id=context_id, title=Config.DEFAULT_CONTEXT_TITLE)
@@ -268,6 +323,8 @@ def join_match(match_id: int):
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
         return err("match_not_found", 404)
+    if not _has_context_access(db, match.context_id, user):
+        return err("forbidden", 403)
     if match.status == "generating":
         return err("match_generating", 400)
     member = _require_member(db, match_id, user.tg_id)
@@ -287,6 +344,8 @@ def spectate_match(match_id: int):
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
         return err("match_not_found", 404)
+    if not _has_context_access(db, match.context_id, user):
+        return err("forbidden", 403)
     member = _require_member(db, match_id, user.tg_id)
     if member is None:
         member = MatchMember(match_id=match_id, tg_id=user.tg_id, role="spectator", can_edit=False)
@@ -564,6 +623,8 @@ def get_match(match_id: int):
     match = db.query(Match).filter_by(id=match_id).one_or_none()
     if match is None:
         return err("match_not_found", 404)
+    if not _has_context_access(db, match.context_id, user):
+        return err("forbidden", 403)
 
     members = (
         db.query(MatchMember, User)
